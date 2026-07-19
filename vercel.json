@@ -1,0 +1,10 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "framework": null,
+  "installCommand": "npm install",
+  "env": {
+    "VERCEL_ORG_ID": "$VERCEL_ORG_ID",
+    "VERCEL_PROJECT_ID": "$VERCEL_PROJECT_ID"
+  }
+}

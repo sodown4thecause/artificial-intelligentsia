@@ -1,0 +1,121 @@
+version: 2.1
+
+orbs:
+  node: circleci/node@5
+
+executors:
+  linux:
+    docker:
+      - image: cimg/node:22.11
+  macos:
+    macos:
+      xcode: "15.4.0"
+    resource_class: macos.m1.medium.gen1
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.medium
+
+jobs:
+  install:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - checkout
+      - node/install:
+          node-version: "22.11.0"
+      - run: npm install
+      - persist_to_workspace:
+          root: .
+          paths:
+            - .
+
+  typecheck:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: npm run typecheck
+
+  test-unit:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: npm run test:unit
+
+  test-contract:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: npm run test:contract
+
+  test-eval:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: npm run test:eval
+
+  test-redteam:
+    executor:
+      name: node/default
+      tag: "22.11"
+    steps:
+      - attach_workspace:
+          at: .
+      - run: npm run test:redteam
+
+  build-desktop:
+    parameters:
+      platform:
+        type: executor
+    executor: << parameters.platform >>
+    steps:
+      # Dependencies are installed per platform because native node_modules cannot be shared across OSes.
+      - checkout
+      - run: npm install
+      - run: npm run build
+
+workflows:
+  mvp-ci:
+    jobs:
+      - install
+      - typecheck:
+          requires:
+            - install
+      - test-unit:
+          requires:
+            - install
+      - test-contract:
+          requires:
+            - install
+      - test-eval:
+          requires:
+            - install
+      - test-redteam:
+          requires:
+            - install
+      - build-desktop:
+          requires:
+            - typecheck
+            - test-unit
+            - test-contract
+            - test-eval
+            - test-redteam
+          matrix:
+            parameters:
+              platform:
+                - linux
+                - macos
+                - windows
