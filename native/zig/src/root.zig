@@ -2,6 +2,7 @@ const std = @import("std");
 const cache = @import("cache.zig");
 const crypto = @import("crypto.zig");
 const queue = @import("queue.zig");
+const shortcuts = @import("shortcuts.zig");
 
 const version = "0.1.0";
 const allocator = std.heap.c_allocator;
@@ -10,6 +11,24 @@ var global_queue: ?queue.OfflineQueue = null;
 
 pub export fn creature_native_init() callconv(.c) c_int { return 0; }
 pub export fn creature_native_version() callconv(.c) [*:0]const u8 { return version; }
+
+pub export fn creature_shortcut_register(modifiers: u32, key: [*:0]const u8, callback_id: [*:0]const u8) callconv(.c) c_int {
+    shortcuts.registerShortcut(.{
+        .modifiers = modifiers,
+        .key = std.mem.span(key),
+        .callback_context = std.mem.span(callback_id),
+    }) catch return -1;
+    return 0;
+}
+
+pub export fn creature_shortcut_unregister(callback_id: [*:0]const u8) callconv(.c) c_int {
+    return if (shortcuts.unregisterShortcut(std.mem.span(callback_id))) 0 else -1;
+}
+
+pub export fn creature_shortcut_unregister_all() callconv(.c) c_int {
+    shortcuts.unregisterAllShortcuts();
+    return 0;
+}
 
 pub export fn creature_cache_init(path: [*:0]const u8, master_key: [*:0]const u8) callconv(.c) c_int {
     if (global_cache) |*existing| existing.deinit();
@@ -99,4 +118,5 @@ pub export fn creature_queue_pending_count() callconv(.c) c_int {
 test {
     _ = @import("cache.zig");
     _ = @import("queue.zig");
+    _ = @import("shortcuts.zig");
 }

@@ -1,0 +1,5 @@
+{
+  "plugins": {
+    "plugin": ["@braintrust/trace-opencode"]
+  }
+}

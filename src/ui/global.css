@@ -1,0 +1,47 @@
+@import "tailwindcss";
+
+@theme {
+  --color-abyss: #060B19;
+  --color-mid: #1A2E44;
+  --color-active: #00FFBF;
+  --color-highlight: #FF00FF;
+  
+  --radius-glass: 1.5rem;
+  
+  --shadow-depth: 0 16px 48px rgba(0, 0, 0, 0.4);
+  
+  --blur-glass: 40px;
+  --blur-glass-heavy: 80px;
+}
+
+@layer base {
+  body {
+    @apply bg-abyss text-white antialiased selection:bg-active/30;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-mid/45 backdrop-blur-(--blur-glass) border border-white/12 rounded-glass shadow-depth;
+  }
+  
+  .glass-highlight {
+    @apply relative before:absolute before:inset-0 before:rounded-glass before:border before:border-white/10 before:pointer-events-none;
+  }
+}
+
+@utility ai-pulse {
+  animation: ai-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes ai-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.95);
+  }
+}

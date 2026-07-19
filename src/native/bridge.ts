@@ -15,6 +15,9 @@ export interface NativeLibrary {
   queueMarkCompleted(id: string): number;
   queueMarkFailed(id: string, error: string): number;
   queuePendingCount(): number;
+  shortcutRegister(modifiers: number, key: string, callbackId: string): number;
+  shortcutUnregister(callbackId: string): number;
+  shortcutUnregisterAll(): number;
 }
 
 function defaultLibraryPath(): string {
@@ -39,10 +42,106 @@ export function loadNativeLib(): NativeLibrary | undefined {
       queueMarkCompleted: library.func("int creature_queue_mark_completed(const char *id)"),
       queueMarkFailed: library.func("int creature_queue_mark_failed(const char *id, const char *error)"),
       queuePendingCount: library.func("int creature_queue_pending_count(void)"),
+      shortcutRegister: library.func("int creature_shortcut_register(unsigned int modifiers, const char *key, const char *callback_id)"),
+      shortcutUnregister: library.func("int creature_shortcut_unregister(const char *callback_id)"),
+      shortcutUnregisterAll: library.func("int creature_shortcut_unregister_all(void)"),
     };
     return native.init() === 0 ? native : undefined;
   } catch {
     return undefined;
+  }
+}
+
+export const ShortcutModifiers = {
+  Control: 1 << 0,
+  Shift: 1 << 1,
+  Alt: 1 << 2,
+  Meta: 1 << 3,
+} as const;
+
+type ShortcutKeyEvent = {
+  key: string;
+  ctrlKey: boolean;
+  shiftKey: boolean;
+  altKey: boolean;
+  metaKey: boolean;
+  preventDefault(): void;
+};
+
+type ShortcutTarget = {
+  addEventListener(type: "keydown", listener: (event: ShortcutKeyEvent) => void): void;
+  removeEventListener(type: "keydown", listener: (event: ShortcutKeyEvent) => void): void;
+};
+
+type RegisteredShortcut = {
+  modifiers: number;
+  key: string;
+  callback: () => void;
+};
+
+/**
+ * Registers native shortcuts when the Zig library is present and otherwise
+ * listens on the focused application window. The latter keeps previews and
+ * test environments fully functional without native binaries.
+ */
+export class NativeShortcuts {
+  private readonly native: NativeLibrary | undefined;
+  private readonly target: ShortcutTarget | undefined;
+  private readonly shortcuts = new Map<string, RegisteredShortcut>();
+  private listening = false;
+
+  constructor(options: { native?: NativeLibrary; target?: ShortcutTarget } = {}) {
+    this.native = options.native ?? loadNativeLib();
+    this.target = options.target ?? (typeof globalThis.addEventListener === "function" ? globalThis as unknown as ShortcutTarget : undefined);
+  }
+
+  register(modifiers: number, key: string, callbackId: string, callback: () => void): boolean {
+    const normalizedKey = key.toLowerCase();
+    const nativeRegistered = this.native?.shortcutRegister(modifiers, normalizedKey, callbackId) === 0;
+    this.shortcuts.set(callbackId, { modifiers, key: normalizedKey, callback });
+    this.startListening();
+    return nativeRegistered;
+  }
+
+  unregister(callbackId: string): boolean {
+    const removed = this.shortcuts.delete(callbackId);
+    const nativeRemoved = this.native?.shortcutUnregister(callbackId) === 0;
+    if (this.shortcuts.size === 0) this.stopListening();
+    return removed || nativeRemoved;
+  }
+
+  unregisterAll(): void {
+    this.shortcuts.clear();
+    this.native?.shortcutUnregisterAll();
+    this.stopListening();
+  }
+
+  private startListening(): void {
+    if (this.listening || !this.target) return;
+    this.target.addEventListener("keydown", this.onKeyDown);
+    this.listening = true;
+  }
+
+  private stopListening(): void {
+    if (!this.listening || !this.target) return;
+    this.target.removeEventListener("keydown", this.onKeyDown);
+    this.listening = false;
+  }
+
+  private readonly onKeyDown = (event: ShortcutKeyEvent): void => {
+    for (const shortcut of this.shortcuts.values()) {
+      if (shortcut.key !== event.key.toLowerCase() || !this.matchesModifiers(shortcut.modifiers, event)) continue;
+      event.preventDefault();
+      shortcut.callback();
+      return;
+    }
+  };
+
+  private matchesModifiers(modifiers: number, event: ShortcutKeyEvent): boolean {
+    return Boolean(modifiers & ShortcutModifiers.Control) === event.ctrlKey
+      && Boolean(modifiers & ShortcutModifiers.Shift) === event.shiftKey
+      && Boolean(modifiers & ShortcutModifiers.Alt) === event.altKey
+      && Boolean(modifiers & ShortcutModifiers.Meta) === event.metaKey;
   }
 }
 

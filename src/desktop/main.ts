@@ -12,6 +12,7 @@ import {
 import { onAppReady } from "./lifecycle.js";
 import { loadNativeLib, NativeCache } from "../native/bridge.js";
 import { OfflineQueue as NativeOfflineQueue } from "../native/queue.js";
+import { registerGlobalShortcuts } from "./shortcuts.js";
 
 class DesktopCache implements LocalCache {
   constructor(private readonly cache: NativeCache) {}
@@ -87,9 +88,6 @@ export async function bootstrapDesktop(): Promise<DesktopContext> {
   };
   setDesktopContext(context);
   await onAppReady();
-  registerGlobalKeyboardShortcuts();
+  registerGlobalShortcuts();
   return context;
 }
-
-/** Reserved integration point for PR 6 keyboard shortcut registration. */
-export function registerGlobalKeyboardShortcuts(): void {}
