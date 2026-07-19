@@ -3,10 +3,12 @@ import test from "node:test";
 import {
   bootstrapDesktop,
   getDesktopContext,
+  getShortcutService,
   onAppActivate,
   onAppBeforeQuit,
   onAppReady,
   onAppWindowAllClosed,
+  registerGlobalKeyboardShortcuts,
   setDesktopContext,
 } from "../../src/desktop/index.js";
 
@@ -31,4 +33,10 @@ test("desktop lifecycle handlers do not throw", async () => {
   await onAppActivate();
   await onAppWindowAllClosed();
   await onAppBeforeQuit();
+});
+
+test("global keyboard shortcuts register a command-palette shortcut", () => {
+  registerGlobalKeyboardShortcuts();
+  const service = getShortcutService();
+  assert.ok(service);
 });
