@@ -1,0 +1,30 @@
+{
+  "name": "creature-os",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Creature — AI-Native Work Operating System (Vercel Eve / AI SDK 7 / Native SDK / Mnemosyne)",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --import tsx --test test/**/*.test.ts",
+    "test:unit": "node --import tsx --test test/unit/**/*.test.ts",
+    "test:contract": "node --import tsx --test test/contract/**/*.test.ts",
+    "test:eval": "node --import tsx --test test/eval/**/*.test.ts",
+    "test:redteam": "node --import tsx --test test/redteam/**/*.test.ts",
+    "verify:coverage": "tsx scripts/verify-coverage.ts",
+    "lint": "echo 'lint placeholder'"
+  },
+  "dependencies": {
+    "@ai-sdk/gateway": "^1.0.0",
+    "ai": "^5.0.0"
+  },
+  "devDependencies": {
+    "@braintrust/core": "^0.0.95",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^2.1.0",
+    "zod": "^3.24.0"
+  }
+}
