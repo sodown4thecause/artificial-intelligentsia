@@ -13,11 +13,15 @@
     "test:eval": "node --import tsx --test test/eval/**/*.test.ts",
     "test:redteam": "node --import tsx --test test/redteam/**/*.test.ts",
     "verify:coverage": "tsx scripts/verify-coverage.ts",
-    "lint": "echo 'lint placeholder'"
+    "lint": "echo 'lint placeholder'",
+    "native:build": "cd native/zig && zig build",
+    "native:test": "cd native/zig && zig build test",
+    "postinstall": "node -e \"if (process.env.CREATURE_BUILD_NATIVE === '1') require('child_process').execFileSync('zig', ['build'], { cwd: 'native/zig', stdio: 'inherit' })\""
   },
   "dependencies": {
     "@ai-sdk/gateway": "^1.0.0",
-    "ai": "^5.0.0"
+    "ai": "^5.0.0",
+    "koffi": "^2.13.1"
   },
   "devDependencies": {
     "@braintrust/core": "^0.0.95",
