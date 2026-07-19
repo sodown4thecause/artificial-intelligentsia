@@ -12,6 +12,7 @@ import {
 import { onAppReady } from "./lifecycle.js";
 import { loadNativeLib, NativeCache } from "../native/bridge.js";
 import { OfflineQueue as NativeOfflineQueue } from "../native/queue.js";
+import { ShortcutModifiers, ShortcutService } from "../native/shortcuts.js";
 
 class DesktopCache implements LocalCache {
   constructor(private readonly cache: NativeCache) {}
@@ -91,5 +92,22 @@ export async function bootstrapDesktop(): Promise<DesktopContext> {
   return context;
 }
 
-/** Reserved integration point for PR 6 keyboard shortcut registration. */
-export function registerGlobalKeyboardShortcuts(): void {}
+let shortcutService: ShortcutService | undefined;
+
+/**
+ * Registers global keyboard shortcuts. In a real desktop shell this binds to the
+ * OS-level shortcut API; in browsers it listens on the active window.
+ */
+export function registerGlobalKeyboardShortcuts(): void {
+  shortcutService = new ShortcutService();
+  shortcutService.register(ShortcutModifiers.Control, "k", "command-palette", () => {
+    // Renderer processes consume this via the desktop context or a shared event bus.
+    // eslint-disable-next-line no-console
+    console.log("[creature] toggle command palette");
+  });
+}
+
+/** Exposes the shortcut service for renderer integration and tests. */
+export function getShortcutService(): ShortcutService | undefined {
+  return shortcutService;
+}
