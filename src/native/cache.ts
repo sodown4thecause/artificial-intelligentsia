@@ -9,6 +9,8 @@ export class LocalCache {
   setMessageMetadata(id: string, metadata: unknown): void { this.set(`message:${id}`, metadata); }
   getDraft<T = unknown>(id: string): T | undefined { return this.get(`draft:${id}`); }
   setDraft(id: string, draft: unknown): void { this.set(`draft:${id}`, draft); }
+  getAgentRun<T = unknown>(id: string): T | undefined { return this.get(`agent-run:${id}`); }
+  setAgentRun(id: string, run: unknown): void { this.set(`agent-run:${id}`, run); }
   getPreference<T = unknown>(key: string): T | undefined { return this.get(`preference:${key}`); }
   setPreference(key: string, value: unknown): void { this.set(`preference:${key}`, value); }
   delete(key: string): void { this.cache.delete(key); }

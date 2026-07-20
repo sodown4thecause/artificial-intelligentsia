@@ -46,6 +46,14 @@ export function loadNativeLib(): NativeLibrary | undefined {
   }
 }
 
+/** Derives a cache-scoped encryption key from an externally provisioned credential. */
+export function deriveCacheMasterKey(credential: string): string {
+  return createHash("sha256")
+    .update("creature-os/cache-master-key/v1\0", "utf8")
+    .update(credential, "utf8")
+    .digest("base64url");
+}
+
 function encryptedValue(value: string, key: Buffer): string {
   const nonce = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, nonce);
@@ -73,7 +81,13 @@ export class NativeCache {
 
   constructor(options: { path?: string; masterKey?: string; native?: NativeLibrary } = {}) {
     const candidate = options.native ?? loadNativeLib();
-    const masterKey = options.masterKey ?? process.env.CREATURE_CACHE_MASTER_KEY ?? "creature-local-fallback";
+    const configuredMasterKey = options.masterKey ?? process.env.CREATURE_CACHE_MASTER_KEY;
+    if (!configuredMasterKey?.trim() && candidate) {
+      throw new Error("No secure credential source is configured for the local cache");
+    }
+    // An unconfigured cache is only safe when it is process-local. Generate an
+    // ephemeral key so direct in-memory callers do not gain persistent storage.
+    const masterKey = configuredMasterKey?.trim() || randomBytes(32).toString("base64url");
     this.key = createHash("sha256").update(masterKey).digest();
     this.native = candidate && candidate.cacheInit(options.path ?? resolve(process.cwd(), ".creature-cache"), masterKey) === 0 ? candidate : undefined;
   }

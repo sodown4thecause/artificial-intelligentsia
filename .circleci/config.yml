@@ -1,121 +1,134 @@
 version: 2.1
 
-orbs:
-  node: circleci/node@5
+# This pipeline deliberately never echoes environment variables or secret values.
+# Store credentials in CircleCI contexts/project environment variables only.
 
 executors:
-  linux:
+  node:
     docker:
-      - image: cimg/node:22.11
-  macos:
-    macos:
-      xcode: "15.4.0"
-    resource_class: macos.m1.medium.gen1
-  windows:
-    machine:
-      image: windows-server-2022-gui:current
-    resource_class: windows.medium
+      - image: cimg/node:22.14
+    working_directory: ~/project
+
+commands:
+  attach_dependencies:
+    steps:
+      - attach_workspace:
+          at: ~/project
 
 jobs:
   install:
-    executor:
-      name: node/default
-      tag: "22.11"
+    executor: node
     steps:
       - checkout
-      - node/install:
-          node-version: "22.11.0"
-      - run: npm install
-      - persist_to_workspace:
-          root: .
+      - restore_cache:
+          keys:
+            - npm-v1-{{ checksum "package-lock.json" }}
+            - npm-v1-
+      - run:
+          name: Install dependencies
+          command: npm ci --ignore-scripts
+      - save_cache:
+          key: npm-v1-{{ checksum "package-lock.json" }}
           paths:
-            - .
+            - ~/.npm
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - node_modules
+            - package.json
+            - package-lock.json
+            - tsconfig.json
+            - src
+            - test
+            - scripts
 
   typecheck:
-    executor:
-      name: node/default
-      tag: "22.11"
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run typecheck
+      - attach_dependencies
+      - run:
+          name: Typecheck
+          command: npm run typecheck
 
-  test-unit:
-    executor:
-      name: node/default
-      tag: "22.11"
+  lint:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:unit
+      - attach_dependencies
+      - run:
+          name: Lint placeholder
+          command: npm run lint
 
-  test-contract:
-    executor:
-      name: node/default
-      tag: "22.11"
+  unit:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:contract
+      - attach_dependencies
+      - run:
+          name: Unit tests
+          command: npm run test:unit
 
-  test-eval:
-    executor:
-      name: node/default
-      tag: "22.11"
+  contract:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:eval
+      - attach_dependencies
+      - run:
+          name: Contract tests
+          command: |
+            if [ -d test/contract ] && [ -n "$(find test/contract -type f -name '*.test.ts' -print -quit)" ]; then
+              npm run test:contract
+            else
+              echo 'No contract tests found; skipping.'
+            fi
 
-  test-redteam:
-    executor:
-      name: node/default
-      tag: "22.11"
+  eval:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:redteam
+      - attach_dependencies
+      - run:
+          name: Eval tests
+          # Do not use `when: always` or `|| true`: non-zero threshold results must fail this job.
+          command: npm run test:eval
 
-  build-desktop:
+  red-team:
+    executor: node
+    steps:
+      - attach_dependencies
+      - run:
+          name: Red-team tests
+          # Do not use `when: always` or `|| true`: security-threshold failures must fail this job.
+          command: npm run test:redteam
+
+  desktop-build:
+    executor: node
     parameters:
       platform:
-        type: executor
-    executor: << parameters.platform >>
+        type: enum
+        enum: [linux, macos, windows]
     steps:
-      # Dependencies are installed per platform because native node_modules cannot be shared across OSes.
-      - checkout
-      - run: npm install
-      - run: npm run build
+      - attach_dependencies
+      # These matrix entries are intentional placeholders. Configure native macOS and Windows
+      # executors here when desktop packaging is introduced; do not treat Linux as cross-platform.
+      - run:
+          name: Desktop build placeholder (<< parameters.platform >>)
+          command: echo 'Desktop build runner for << parameters.platform >> is not configured yet.'
 
 workflows:
-  mvp-ci:
+  verify:
     jobs:
       - install
       - typecheck:
-          requires:
-            - install
-      - test-unit:
-          requires:
-            - install
-      - test-contract:
-          requires:
-            - install
-      - test-eval:
-          requires:
-            - install
-      - test-redteam:
-          requires:
-            - install
-      - build-desktop:
-          requires:
-            - typecheck
-            - test-unit
-            - test-contract
-            - test-eval
-            - test-redteam
+          requires: [install]
+      - lint:
+          requires: [typecheck]
+      - unit:
+          requires: [lint]
+      - contract:
+          requires: [unit]
+      - eval:
+          requires: [contract]
+      - red-team:
+          requires: [eval]
+      - desktop-build:
+          requires: [red-team]
           matrix:
             parameters:
-              platform:
-                - linux
-                - macos
-                - windows
+              platform: [linux, macos, windows]

@@ -10,7 +10,7 @@ import {
   setDesktopContext,
 } from "./context.js";
 import { onAppReady } from "./lifecycle.js";
-import { loadNativeLib, NativeCache } from "../native/bridge.js";
+import { deriveCacheMasterKey, loadNativeLib, NativeCache } from "../native/bridge.js";
 import { OfflineQueue as NativeOfflineQueue } from "../native/queue.js";
 import { ShortcutModifiers, ShortcutService } from "../native/shortcuts.js";
 
@@ -40,12 +40,16 @@ class DesktopOfflineQueue implements OfflineQueue {
 }
 
 function createCredentialManager(): CredentialManager {
-  const masterKey = process.env.CREATURE_CACHE_MASTER_KEY ?? "creature-local-fallback";
-
   return {
     async getMasterKey(): Promise<string> {
-      // Electron/Tauri adapters may replace this implementation with the OS keychain.
-      return masterKey;
+      // The current Native SDK exposes cache primitives but not an OS credential API.
+      // Until that API is available, require an installation-provisioned secret and
+      // derive a cache-specific key from it rather than persisting a fallback key.
+      const credential = process.env.CREATURE_CACHE_MASTER_KEY;
+      if (!credential?.trim()) {
+        throw new Error("No secure credential source is configured for the local cache");
+      }
+      return deriveCacheMasterKey(credential);
     },
   };
 }
