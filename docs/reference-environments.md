@@ -12,6 +12,24 @@ Creature OS desktop releases are supported on the following end-user environment
 
 Older operating systems may work but are not release-blocking test targets. The desktop release notes must identify an architecture when a platform-specific installer is published.
 
+## CI desktop flow matrix
+
+CircleCI runs the same deterministic desktop-flow suite on the Windows, macOS, and Linux reference runners. Each job runs:
+
+```sh
+npm ci
+npm run verify:platform-flows
+npm run typecheck
+npm run test:unit
+npm run test:eval
+npm run test:e2e
+npm run test:redteam
+```
+
+`npm run verify:platform-flows` emits one artifact-friendly line per platform label. Every line must list `email-to-work`, `document-improvement`, `approval-resume`, and `automation-simulate-apply-reverse`. The deterministic tests select these labels directly, so they do not inspect the host filesystem, load a native library, access a provider, or require secrets.
+
+This matrix is a simulation of the shared desktop workflow contract, not a native-package or OS-keyring smoke test. Release candidates still require separate evidence that the packaged Windows DLL and Credential Manager, macOS dylib and Keychain, and Linux shared object and Secret Service-compatible keyring initialize successfully on their target architecture. Preserve that evidence with the release artifacts; it is not produced by this CI workflow.
+
 ## Prerequisites
 
 - A supported, fully patched operating system; local system clock synchronization is required for provider authentication.

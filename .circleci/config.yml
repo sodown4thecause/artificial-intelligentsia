@@ -129,13 +129,30 @@ jobs:
       - run:
           name: Install desktop build dependencies (<< parameters.platform >>)
           command: npm ci --ignore-scripts
+      - run:
+          name: Verify deterministic desktop flows (<< parameters.platform >>)
+          command: npm run verify:platform-flows
+      - run:
+          name: Typecheck desktop flows (<< parameters.platform >>)
+          command: npm run typecheck
+      - run:
+          name: Unit desktop flows (<< parameters.platform >>)
+          command: npm run test:unit
+      - run:
+          name: Evaluate desktop flows (<< parameters.platform >>)
+          command: npm run test:eval
+      - run:
+          name: Exercise desktop end-to-end flows (<< parameters.platform >>)
+          command: npm run test:e2e
+      - run:
+          name: Red-team desktop flows (<< parameters.platform >>)
+          command: npm run test:redteam
       # Native packaging intentionally remains a placeholder until the desktop shell is selected.
       # Replace this command with the signed Electron/Tauri package command for each runner;
       # keep artifacts under artifacts/<< parameters.platform >> for the publishing job below.
       - run:
           name: Package desktop placeholder (<< parameters.platform >>)
-          command: |
-            node -e "require('fs').mkdirSync('artifacts/<< parameters.platform >>', { recursive: true }); require('fs').writeFileSync('artifacts/<< parameters.platform >>/README.txt', 'Native << parameters.platform >> packaging is not configured yet.\n')"
+          command: node -e "require('fs').mkdirSync('artifacts/<< parameters.platform >>', { recursive: true }); require('fs').writeFileSync('artifacts/<< parameters.platform >>/README.txt', 'Native << parameters.platform >> packaging is not configured yet.\\n')"
       - persist_to_workspace:
           root: ~/project
           paths:
