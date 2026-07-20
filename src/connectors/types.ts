@@ -25,7 +25,9 @@ export type ConnectorErrorCode =
   | "CONNECTION_EXPIRED"
   | "MISSING_SCOPE"
   | "NOT_FOUND"
-  | "VALIDATION_ERROR";
+  | "VALIDATION_ERROR"
+  | "MANAGEMENT_UNAVAILABLE"
+  | "CONNECTION_ERROR";
 
 export class ConnectorError extends Error {
   public readonly reconnectRequired: boolean;
@@ -53,6 +55,11 @@ export interface ManagedConnector {
   getHealth(connectorId: string): ConnectorHealth;
   requireScopes(connectorId: string, requiredScopes: readonly ConnectorScope[]): void;
   reconnect(connectorId: string, grantedScopes: readonly ConnectorScope[]): ConnectorHealth;
+
+  /** Optional management operations so existing read-only connector consumers remain compatible. */
+  listHealth?(): readonly ConnectorHealth[];
+  setEnabled?(connectorId: string, enabled: boolean): ConnectorHealth;
+  refresh?(connectorId: string): ConnectorHealth;
 }
 
 export function requireHealthyConnection(
