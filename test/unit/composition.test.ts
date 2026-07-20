@@ -10,7 +10,7 @@ const actor = { userId: "user-1", workspaceId: "workspace-1" };
 const source: EditableDocument = { id: "doc-1", workspaceId: "workspace-1", createdByUserId: "user-1", title: "Source", content: { blocks: [{ type: "paragraph", text: "Original" }, { type: "attachment", attachmentId: "attachment-1" }] }, visibility: "workspace", currentVersion: 1, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z" };
 
 function documentRepository() {
-  return new DocumentRepository({ canAccess: async () => true }, { index: () => {}, remove: () => true, search: () => [] }, { write: async () => {} });
+  return new DocumentRepository({ authorizer: { canAccess: async () => true }, searchIndex: { index: () => {}, remove: () => true, search: () => [] }, audit: { write: async () => {} } });
 }
 
 test("composition validates generated content and preserves source attachments", async () => {

@@ -72,7 +72,7 @@ export interface SaveDocumentInput {
 }
 
 export interface DocumentAuditEvent {
-  readonly action: "document.create" | "document.save" | "document.restore" | "document.attachment.link" | "document.attachment.upload";
+  readonly action: "document.create" | "document.save" | "document.restore" | "document.attachment.link" | "document.attachment.upload" | "document.share" | "document.share.revoke" | "document.list";
   readonly actor: DocumentActor;
   readonly documentId: string;
   readonly metadata?: Readonly<Record<string, unknown>>;
