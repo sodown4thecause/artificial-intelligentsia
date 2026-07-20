@@ -4,6 +4,8 @@
 
 This document records deterministic fixture evidence, not seven calendar days of production or beta use. The deterministic harness repeats the four journeys across labelled runs 1–7 and **does not** claim that people observed the product for seven days. Human observation and release sign-off remain pending.
 
+See the [Gate 1 closure assessment](gates/gate-1-closure.md) for the PRD §17 disposition and remaining closure evidence.
+
 ## Journey matrix
 
 | Journey | Deterministic proof | Safety and telemetry proof |
