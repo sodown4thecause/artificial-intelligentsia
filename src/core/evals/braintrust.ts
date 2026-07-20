@@ -17,6 +17,31 @@ export interface EvalScore<T, E> {
   score: number;
 }
 
+export const EVAL_HARNESS_VERSION = "1.0.0";
+
+export interface EvalCase<T, Expected = unknown> {
+  id: string;
+  input: T;
+  expected: Expected;
+  metadata?: Record<string, string | number | boolean>;
+}
+
+export interface EvalDataset<T, Expected = unknown> {
+  name: string;
+  version: string;
+  cases: EvalCase<T, Expected>[];
+}
+
+export interface VersionedEvalResult<T, Output> extends EvalScore<T, Output> {
+  caseId: string;
+  passed: boolean;
+}
+
+export interface EvalHarness {
+  version: typeof EVAL_HARNESS_VERSION;
+  run<T, Expected, Output>(dataset: EvalDataset<T, Expected>, execute: (input: T) => Output, evaluate: (output: Output, expected: Expected) => number): VersionedEvalResult<T, Output>[];
+}
+
 export interface TraceStep {
   type: string;
   status: string;
@@ -81,6 +106,22 @@ export function runEval<T, E>(
   });
 
   return scores;
+}
+
+/** Creates a deterministic, versioned harness suitable for CI and local baselines. */
+export function createEvalHarness(): EvalHarness {
+  return {
+    version: EVAL_HARNESS_VERSION,
+    run<T, Expected, Output>(dataset: EvalDataset<T, Expected>, execute: (input: T) => Output, evaluate: (output: Output, expected: Expected) => number): VersionedEvalResult<T, Output>[] {
+      const results = dataset.cases.map((testCase) => {
+        const output = execute(testCase.input);
+        const score = evaluate(output, testCase.expected);
+        return { caseId: testCase.id, input: testCase.input, output, score, passed: score >= 1 };
+      });
+      getClient().log("eval.completed", { harnessVersion: EVAL_HARNESS_VERSION, dataset: dataset.name, datasetVersion: dataset.version, caseCount: results.length, averageScore: results.length === 0 ? 0 : results.reduce((total, result) => total + result.score, 0) / results.length });
+      return results;
+    },
+  };
 }
 
 /** Records the durable workflow steps associated with an agent run. */

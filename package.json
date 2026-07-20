@@ -11,6 +11,7 @@
     "test:unit": "node --import tsx --test test/unit/**/*.test.ts",
     "test:contract": "node --import tsx --test test/contract/**/*.test.ts",
     "test:eval": "node --import tsx --test test/eval/**/*.test.ts",
+    "test:e2e": "node --import tsx --test test/e2e/**/*.test.ts",
     "test:redteam": "node --import tsx --test test/redteam/**/*.test.ts",
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "lint": "echo 'lint placeholder'"

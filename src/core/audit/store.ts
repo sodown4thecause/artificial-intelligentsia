@@ -7,6 +7,8 @@ import {
   type AuditEventInput,
   type AuditTimeRange,
 } from './types.js';
+import { assertCanReadAuditWorkspace, type AuditAccessPrincipal } from './access.js';
+import type { AuditQuery } from './query.js';
 
 function canonicalize(value: unknown): string {
   if (value === null || typeof value !== 'object') {
@@ -24,8 +26,20 @@ function canonicalize(value: unknown): string {
     .join(',')}}`;
 }
 
-function hashEvent(event: Omit<AuditEvent, 'hash'>): string {
+export function hashAuditEvent(event: Omit<AuditEvent, 'hash'>): string {
   return createHash('sha256').update(canonicalize(event)).digest('hex');
+}
+
+/** Returns false when an event's contents or its chain predecessor were modified. */
+export function verifyAuditEventChain(events: readonly AuditEvent[]): boolean {
+  let previousHash: string | null = null;
+
+  return events.every((event) => {
+    const { hash, ...unsignedEvent } = event;
+    const valid = event.previousHash === previousHash && hashAuditEvent(unsignedEvent) === hash;
+    previousHash = event.hash;
+    return valid;
+  });
 }
 
 function freezeDeep<T>(value: T): T {
@@ -50,7 +64,7 @@ function rangeBoundary(value: Date | string | undefined): number | undefined {
   return milliseconds;
 }
 
-/** Phase 0 audit log. A durable implementation can preserve this API. */
+/** Append-only, immutable audit log with authorization-scoped reads. */
 export class InMemoryAuditStore {
   private readonly events: AuditEvent[] = [];
 
@@ -65,33 +79,70 @@ export class InMemoryAuditStore {
     };
     const event = AuditEventSchema.parse({
       ...unsignedEvent,
-      hash: hashEvent(unsignedEvent),
+       hash: hashAuditEvent(unsignedEvent),
     });
 
     this.events.push(freezeDeep(event));
     return event;
   }
 
-  getByRunId(runId: string): readonly Readonly<AuditEvent>[] {
-    return Object.freeze(this.events.filter((event) => event.runId === runId));
-  }
-
-  getByActor(actorId: string): readonly Readonly<AuditEvent>[] {
-    return Object.freeze(this.events.filter((event) => event.actor.id === actorId));
-  }
-
-  getByTimeRange(range: AuditTimeRange): readonly Readonly<AuditEvent>[] {
-    const from = rangeBoundary(range.from);
-    const to = rangeBoundary(range.to);
+  query(principal: AuditAccessPrincipal, query: AuditQuery): readonly Readonly<AuditEvent>[] {
+    assertCanReadAuditWorkspace(principal, query.workspaceId);
+    const from = rangeBoundary(query.timeRange?.from);
+    const to = rangeBoundary(query.timeRange?.to);
     if (from !== undefined && to !== undefined && from > to) {
       throw new RangeError('Audit time range start must not be after its end');
     }
 
     return Object.freeze(
       this.events.filter((event) => {
+        if (event.workspaceId !== query.workspaceId) {
+          return false;
+        }
+        if (query.runId !== undefined && event.runId !== query.runId) {
+          return false;
+        }
+        if (query.actorId !== undefined && event.actor.id !== query.actorId) {
+          return false;
+        }
         const timestamp = Date.parse(event.occurredAt);
         return (from === undefined || timestamp >= from) && (to === undefined || timestamp <= to);
       }),
     );
+  }
+
+  getByRunId(
+    principal: AuditAccessPrincipal,
+    workspaceId: string,
+    runId: string,
+  ): readonly Readonly<AuditEvent>[] {
+    return this.query(principal, { workspaceId, runId });
+  }
+
+  getByActor(
+    principal: AuditAccessPrincipal,
+    workspaceId: string,
+    actorId: string,
+  ): readonly Readonly<AuditEvent>[] {
+    return this.query(principal, { workspaceId, actorId });
+  }
+
+  getByTimeRange(
+    principal: AuditAccessPrincipal,
+    workspaceId: string,
+    range: AuditTimeRange,
+  ): readonly Readonly<AuditEvent>[] {
+    return this.query(principal, { workspaceId, timeRange: range });
+  }
+
+  getByWorkspace(
+    principal: AuditAccessPrincipal,
+    workspaceId: string,
+  ): readonly Readonly<AuditEvent>[] {
+    return this.query(principal, { workspaceId });
+  }
+
+  verifyIntegrity(): boolean {
+    return verifyAuditEventChain(this.events);
   }
 }

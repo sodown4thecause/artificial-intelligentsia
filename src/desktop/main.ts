@@ -13,6 +13,9 @@ import { onAppReady } from "./lifecycle.js";
 import { deriveCacheMasterKey, loadNativeLib, NativeCache } from "../native/bridge.js";
 import { OfflineQueue as NativeOfflineQueue } from "../native/queue.js";
 import { ShortcutModifiers, ShortcutService } from "../native/shortcuts.js";
+import { createDevelopmentAuthProvider } from "../auth/provider.js";
+import { CredentialSessionStore, type OsCredentialService, SessionManager } from "../auth/session.js";
+import { WorkspaceSelectionController } from "../auth/workspace.js";
 
 class DesktopCache implements LocalCache {
   constructor(private readonly cache: NativeCache) {}
@@ -75,6 +78,32 @@ function createPlatformServices(): Pick<DesktopContext, "tray" | "notifications"
   return { tray, notifications, dialogs, clipboard };
 }
 
+/** Development fallback only; production shells must provide an OS credential-manager adapter. */
+class VolatileCredentialService implements OsCredentialService {
+  private readonly credentials = new Map<string, string>();
+
+  async getPassword(service: string, account: string): Promise<string | undefined> {
+    return this.credentials.get(`${service}:${account}`);
+  }
+
+  async setPassword(service: string, account: string, password: string): Promise<void> {
+    this.credentials.set(`${service}:${account}`, password);
+  }
+
+  async deletePassword(service: string, account: string): Promise<void> {
+    this.credentials.delete(`${service}:${account}`);
+  }
+}
+
+function createDesktopAuthentication(): WorkspaceSelectionController {
+  const provider = createDevelopmentAuthProvider({
+    user: { id: "development-user", email: "developer@creature.local", displayName: "Developer" },
+    workspaces: [{ id: "development-workspace", name: "Development", slug: "development" }],
+    memberships: [{ userId: "development-user", workspaceId: "development-workspace", role: "owner", status: "active" }],
+  });
+  return new WorkspaceSelectionController(new SessionManager(provider, new CredentialSessionStore(new VolatileCredentialService())));
+}
+
 /**
  * Initializes desktop services. Native bindings are optional so browser previews,
  * tests, and installations without a compiled Zig library remain usable.
@@ -91,9 +120,18 @@ export async function bootstrapDesktop(): Promise<DesktopContext> {
     ...createPlatformServices(),
   };
   setDesktopContext(context);
+  desktopAuthentication = createDesktopAuthentication();
+  await desktopAuthentication.restore();
   await onAppReady();
   registerGlobalKeyboardShortcuts();
   return context;
+}
+
+let desktopAuthentication: WorkspaceSelectionController | undefined;
+
+/** Returns the desktop authentication boundary after bootstrap. */
+export function getDesktopAuthentication(): WorkspaceSelectionController | undefined {
+  return desktopAuthentication;
 }
 
 let shortcutService: ShortcutService | undefined;

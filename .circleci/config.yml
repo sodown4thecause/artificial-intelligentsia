@@ -8,6 +8,20 @@ executors:
     docker:
       - image: cimg/node:22.14
     working_directory: ~/project
+  linux:
+    docker:
+      - image: cimg/node:22.14
+    working_directory: ~/project
+  macos:
+    macos:
+      xcode: "15.2.0"
+    resource_class: macos.m1.medium.gen1
+    working_directory: ~/project
+  windows:
+    machine:
+      image: windows-server-2022-gui:current
+    resource_class: windows.medium
+    working_directory: ~/project
 
 commands:
   attach_dependencies:
@@ -64,7 +78,14 @@ jobs:
       - attach_dependencies
       - run:
           name: Unit tests
-          command: npm run test:unit
+          command: |
+            mkdir -p test-results
+            npm run test:unit -- --reporter=junit --outputFile=test-results/unit.xml
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+          destination: test-results
 
   contract:
     executor: node
@@ -98,18 +119,38 @@ jobs:
           command: npm run test:redteam
 
   desktop-build:
-    executor: node
     parameters:
       platform:
         type: enum
         enum: [linux, macos, windows]
+    executor: << parameters.platform >>
     steps:
-      - attach_dependencies
-      # These matrix entries are intentional placeholders. Configure native macOS and Windows
-      # executors here when desktop packaging is introduced; do not treat Linux as cross-platform.
+      - checkout
       - run:
-          name: Desktop build placeholder (<< parameters.platform >>)
-          command: echo 'Desktop build runner for << parameters.platform >> is not configured yet.'
+          name: Install desktop build dependencies (<< parameters.platform >>)
+          command: npm ci --ignore-scripts
+      # Native packaging intentionally remains a placeholder until the desktop shell is selected.
+      # Replace this command with the signed Electron/Tauri package command for each runner;
+      # keep artifacts under artifacts/<< parameters.platform >> for the publishing job below.
+      - run:
+          name: Package desktop placeholder (<< parameters.platform >>)
+          command: |
+            node -e "require('fs').mkdirSync('artifacts/<< parameters.platform >>', { recursive: true }); require('fs').writeFileSync('artifacts/<< parameters.platform >>/README.txt', 'Native << parameters.platform >> packaging is not configured yet.\n')"
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - artifacts
+
+  publish-desktop-artifacts:
+    executor: node
+    steps:
+      - attach_workspace:
+          at: ~/project
+      # CircleCI retains these artifacts for release review. Add signing/notarization and
+      # upload-to-release-registry steps here once native packages replace the placeholders.
+      - store_artifacts:
+          path: artifacts
+          destination: desktop
 
 workflows:
   verify:
@@ -132,3 +173,5 @@ workflows:
           matrix:
             parameters:
               platform: [linux, macos, windows]
+      - publish-desktop-artifacts:
+          requires: [desktop-build]

@@ -3,10 +3,23 @@ import test from 'node:test';
 
 import { recordAuditEvent } from '../../src/core/audit/hook.js';
 import { InMemoryAuditStore } from '../../src/core/audit/store.js';
-import { AuditEventInputSchema, createSensitiveContentReference, type AuditEventInput } from '../../src/core/audit/types.js';
+import type { AuditAccessPrincipal } from '../../src/core/audit/access.js';
+import {
+  AuditEventInputSchema,
+  createSensitiveContentReference,
+  type AuditEventInput,
+} from '../../src/core/audit/types.js';
+
+const WORKSPACE_ID = 'ws-1';
+
+const adminPrincipal: AuditAccessPrincipal = {
+  id: 'user-1',
+  workspaceRoles: { [WORKSPACE_ID]: 'admin' },
+};
 
 function eventInput(overrides: Partial<AuditEventInput> = {}): AuditEventInput {
   return {
+    workspaceId: WORKSPACE_ID,
     runId: 'run-123',
     actor: { id: 'user-1', type: 'user' },
     agent: { id: 'mail-agent', version: '1.2.3' },
@@ -39,16 +52,37 @@ test('appends complete, immutable, hash-chained audit events', () => {
   assert.throws(() => {
     (first as AuditEventInput).runId = 'tampered';
   }, TypeError);
+  assert.ok(store.verifyIntegrity());
 });
 
 test('queries audit events by run, actor, and inclusive time range', () => {
   const store = new InMemoryAuditStore();
   const early = store.append(eventInput({ occurredAt: '2026-07-20T09:00:00.000Z' }));
-  store.append(eventInput({ runId: 'run-456', actor: { id: 'agent-1', type: 'agent' }, occurredAt: '2026-07-20T11:00:00.000Z' }));
+  store.append(
+    eventInput({
+      runId: 'run-456',
+      actor: { id: 'agent-1', type: 'agent' },
+      occurredAt: '2026-07-20T11:00:00.000Z',
+    }),
+  );
 
-  assert.deepEqual(store.getByRunId('run-123').map((event) => event.id), [early.id]);
-  assert.equal(store.getByActor('agent-1').length, 1);
-  assert.equal(store.getByTimeRange({ from: '2026-07-20T09:00:00.000Z', to: '2026-07-20T09:00:00.000Z' }).length, 1);
+  assert.deepEqual(store.getByRunId(adminPrincipal, WORKSPACE_ID, 'run-123').map((event) => event.id), [early.id]);
+  assert.equal(store.getByActor(adminPrincipal, WORKSPACE_ID, 'agent-1').length, 1);
+  assert.equal(
+    store.getByTimeRange(adminPrincipal, WORKSPACE_ID, {
+      from: '2026-07-20T09:00:00.000Z',
+      to: '2026-07-20T09:00:00.000Z',
+    }).length,
+    1,
+  );
+});
+
+test('denies audit reads to principals without workspace audit role', () => {
+  const store = new InMemoryAuditStore();
+  store.append(eventInput());
+  const unauthorizedPrincipal: AuditAccessPrincipal = { id: 'user-2', workspaceRoles: {} };
+
+  assert.throws(() => store.getByWorkspace(unauthorizedPrincipal, WORKSPACE_ID), /AuditAccessDeniedError/);
 });
 
 test('uses opaque secure references instead of raw sensitive content', () => {
@@ -69,5 +103,5 @@ test('uses opaque secure references instead of raw sensitive content', () => {
 test('recordAuditEvent writes through the supplied hook store', () => {
   const store = new InMemoryAuditStore();
   const event = recordAuditEvent(eventInput(), store);
-  assert.equal(store.getByRunId(event.runId)[0]?.id, event.id);
+  assert.equal(store.getByRunId(adminPrincipal, WORKSPACE_ID, event.runId)[0]?.id, event.id);
 });

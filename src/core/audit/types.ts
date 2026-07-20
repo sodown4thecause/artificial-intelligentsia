@@ -105,6 +105,7 @@ export const AuditRetrySchema = z
 
 export const AuditEventInputSchema = z
   .object({
+    workspaceId: identifier,
     runId: identifier,
     actor: AuditActorSchema,
     agent: AuditAgentSchema,

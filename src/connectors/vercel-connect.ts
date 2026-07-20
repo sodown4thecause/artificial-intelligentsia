@@ -1,0 +1,56 @@
+import {
+  type ConnectorHealth,
+  type ConnectorScope,
+  type ManagedConnector,
+  ConnectorError,
+  requireHealthyConnection,
+} from "./types.js";
+
+export interface MockVercelConnectOptions {
+  connections: readonly ConnectorHealth[];
+  now?: () => Date;
+}
+
+/**
+ * Contract double for Vercel Connect. It exposes connection health and grants,
+ * never provider credentials or authentication material.
+ */
+export class MockVercelConnect implements ManagedConnector {
+  private readonly connections = new Map<string, ConnectorHealth>();
+  private readonly now: () => Date;
+
+  public constructor(options: MockVercelConnectOptions) {
+    options.connections.forEach((connection) => this.connections.set(connection.connectorId, connection));
+    this.now = options.now ?? (() => new Date());
+  }
+
+  public getHealth(connectorId: string): ConnectorHealth {
+    const health = this.connections.get(connectorId);
+    if (health === undefined) {
+      throw new ConnectorError("NOT_FOUND", `Connector ${connectorId} was not found.`);
+    }
+    return health;
+  }
+
+  public requireScopes(connectorId: string, requiredScopes: readonly ConnectorScope[]): void {
+    requireHealthyConnection(this.getHealth(connectorId), requiredScopes, this.now());
+  }
+
+  public reconnect(connectorId: string, grantedScopes: readonly ConnectorScope[]): ConnectorHealth {
+    const current = this.getHealth(connectorId);
+    const reconnected: ConnectorHealth = {
+      ...current,
+      enabled: true,
+      status: "connected",
+      grantedScopes: [...grantedScopes],
+      expiresAt: null,
+      error: null,
+    };
+    this.connections.set(connectorId, reconnected);
+    return reconnected;
+  }
+}
+
+export function createMockVercelConnect(options: MockVercelConnectOptions): MockVercelConnect {
+  return new MockVercelConnect(options);
+}
