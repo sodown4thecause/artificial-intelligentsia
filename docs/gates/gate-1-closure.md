@@ -62,3 +62,12 @@ This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd
 ## Final disposition
 
 **BLOCKED.** Criteria 1 and 13 are blocked; criteria 2, 3, and 12 are partial. D1 is open, G13 lacks live-provider and native proof, the human observation and rollback drill are pending, and named human sign-offs (including Gate 0 replacements) are pending. Deterministic fixtures must not be presented as live, native, or human evidence.
+# Gate 1 evidence update — 2026-07-20
+
+| Criterion | Status | Evidence / remaining limitation |
+|---|---|---|
+| D1 product/module names | PASS/CLOSED | [`D1-product-module-names.md`](../../spec/decisions/D1-product-module-names.md) locks **Creature OS** and **Go Agent**. |
+| Native library compilation | PARTIAL | Desktop CI builds/tests the host-native Zig dynamic library and retains a per-OS library plus checksum. |
+| Installers and runnable desktop launch | BLOCKED/NOT IMPLEMENTED | No installer framework or runnable desktop executable exists. |
+| Signing/notarization | BLOCKED/NOT IMPLEMENTED | No signing or notarization implementation exists. |
+| Production OS keyring write/read/delete | BLOCKED/NOT IMPLEMENTED | No production OS keyring adapter exists. |

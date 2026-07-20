@@ -147,12 +147,58 @@ jobs:
       - run:
           name: Red-team desktop flows (<< parameters.platform >>)
           command: npm run test:redteam
-      # Native packaging intentionally remains a placeholder until the desktop shell is selected.
-      # Replace this command with the signed Electron/Tauri package command for each runner;
-      # keep artifacts under artifacts/<< parameters.platform >> for the publishing job below.
+      - when:
+          condition:
+            equal: [linux, << parameters.platform >>]
+          steps:
+            - run:
+                name: Build and test native library (linux)
+                command: |
+                  curl -fsSL https://ziglang.org/download/0.13.0/zig-linux-x86_64-0.13.0.tar.xz | tar -xJ -C /tmp
+                  export PATH="/tmp/zig-linux-x86_64-0.13.0:$PATH"
+                  npm run native:test
+                  npm run native:build
+                  npx tsx scripts/smoke-native-library.ts --platform linux
+                  mkdir -p artifacts/linux/native
+                  cp native/zig/zig-out/lib/libcreature_native.so artifacts/linux/native/
+                  sha256sum artifacts/linux/native/libcreature_native.so > artifacts/linux/native/SHA256SUMS
+      - when:
+          condition:
+            equal: [macos, << parameters.platform >>]
+          steps:
+            - run:
+                name: Build and test native library (macos)
+                command: |
+                  curl -fsSL https://ziglang.org/download/0.13.0/zig-macos-aarch64-0.13.0.tar.xz | tar -xJ -C /tmp
+                  export PATH="/tmp/zig-macos-aarch64-0.13.0:$PATH"
+                  npm run native:test
+                  npm run native:build
+                  npx tsx scripts/smoke-native-library.ts --platform macos
+                  mkdir -p artifacts/macos/native
+                  cp native/zig/zig-out/lib/libcreature_native.dylib artifacts/macos/native/
+                  shasum -a 256 artifacts/macos/native/libcreature_native.dylib > artifacts/macos/native/SHA256SUMS
+      - when:
+          condition:
+            equal: [windows, << parameters.platform >>]
+          steps:
+            - run:
+                name: Build and test native library (windows)
+                shell: powershell.exe
+                command: |
+                  Invoke-WebRequest -UseBasicParsing https://ziglang.org/download/0.13.0/zig-windows-x86_64-0.13.0.zip -OutFile $env:TEMP\zig.zip
+                  Expand-Archive -Path $env:TEMP\zig.zip -DestinationPath $env:TEMP -Force
+                  $env:Path = "$env:TEMP\zig-windows-x86_64-0.13.0;$env:Path"
+                  npm run native:test
+                  npm run native:build
+                  npx tsx scripts/smoke-native-library.ts --platform windows
+                  New-Item -ItemType Directory -Force -Path artifacts\windows\native
+                  Copy-Item native\zig\zig-out\lib\creature_native.dll artifacts\windows\native\
+                  Get-FileHash -Algorithm SHA256 artifacts\windows\native\creature_native.dll | Format-List | Out-File artifacts\windows\native\SHA256SUMS
       - run:
-          name: Package desktop placeholder (<< parameters.platform >>)
-          command: node -e "require('fs').mkdirSync('artifacts/<< parameters.platform >>', { recursive: true }); require('fs').writeFileSync('artifacts/<< parameters.platform >>/README.txt', 'Native << parameters.platform >> packaging is not configured yet.\\n')"
+          name: Record blocked launch and keyring evidence (<< parameters.platform >>)
+          command: |
+            mkdir -p artifacts/<< parameters.platform >>
+            printf '%s\n' 'STATUS: BLOCKED/NOT IMPLEMENTED' 'No installer framework or runnable desktop executable is implemented.' 'Production OS keyring write/read/delete adapter is not implemented.' 'Signing and notarization are not implemented.' > artifacts/<< parameters.platform >>/launch-keyring-evidence.txt
       - persist_to_workspace:
           root: ~/project
           paths:

@@ -59,3 +59,8 @@ Record hardware, OS version, app build, network conditions, account size, and p5
 - Native installers are not published until the signing, notarization, and packaging commands replace the CI placeholders. The current CI artifact is a release-review placeholder, not an installable product.
 - Offline work is limited to data already cached locally; provider actions require connectivity and a valid authorization.
 - Screen-reader, high-contrast, and non-English locale validation is tracked per release and must be recorded in release notes when incomplete.
+# Gate 1 native evidence status (2026-07-20)
+
+- **D1 naming:** PASS/CLOSED — product: **Creature OS**; primary assistant module: **Go Agent**.
+- **Native library compilation:** PARTIAL — CI builds and tests the host-native Zig dynamic library and retains per-OS library/checksum artifacts.
+- **Installers, runnable desktop launch, signing/notarization, and production OS keyring write/read/delete:** BLOCKED/NOT IMPLEMENTED. Native library artifacts are not installers or desktop launch evidence.
