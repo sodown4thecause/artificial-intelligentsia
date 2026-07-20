@@ -38,3 +38,12 @@ test("risky steps require approval before invocation", async () => {
   assert.equal(completed.status, "completed");
   assert.equal(invoked, true);
 });
+
+test("lists persisted durable runs", () => {
+  const runtime = new DurableSessionRuntime(new InMemoryRunStore());
+  runtime.createRun("first", "First task", [{ id: "step", execute: () => undefined }]);
+  runtime.createRun("second", "Second task", [{ id: "step", execute: () => undefined }]);
+  const runs = runtime.listRuns();
+  assert.ok(!(runs instanceof Promise));
+  assert.deepEqual(runs.map((run) => run.id).sort(), ["first", "second"]);
+});

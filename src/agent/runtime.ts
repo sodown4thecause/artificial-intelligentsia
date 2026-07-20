@@ -34,6 +34,7 @@ export interface DurableRun {
   error?: string;
   createdAt: string;
   updatedAt: string;
+  threadId?: string;
 }
 
 export interface StepResult {
@@ -55,6 +56,7 @@ export interface StepContext {
 export interface RunStore {
   load(id: string): DurableRun | undefined;
   save(run: DurableRun): void;
+  listRuns(): Promise<readonly DurableRun[]> | readonly DurableRun[];
 }
 
 /** A process-local store for tests and environments without a native cache. */
@@ -70,6 +72,10 @@ export class InMemoryRunStore implements RunStore {
     this.runs.set(run.id, structuredClone(run));
   }
 
+  listRuns(): readonly DurableRun[] {
+    return [...this.runs.values()].map((run) => structuredClone(run));
+  }
+
   clear(): void {
     this.runs.clear();
   }
@@ -77,6 +83,8 @@ export class InMemoryRunStore implements RunStore {
 
 /** Persists durable run metadata through the native cache abstraction. */
 export class NativeCacheRunStore implements RunStore {
+  private static readonly indexId = "__durable-run-index__";
+
   constructor(private readonly cache: LocalCache = new LocalCache()) {}
 
   load(id: string): DurableRun | undefined {
@@ -85,6 +93,32 @@ export class NativeCacheRunStore implements RunStore {
 
   save(run: DurableRun): void {
     this.cache.setAgentRun(run.id, run);
+    const ids = this.loadIndexedRunIds();
+    if (!ids.includes(run.id)) {
+      this.cache.setAgentRun(NativeCacheRunStore.indexId, {
+        id: NativeCacheRunStore.indexId,
+        task: "Durable run index",
+        status: "completed",
+        nextStepIndex: 0,
+        checkpoints: [],
+        partialOutputs: ids.concat(run.id).map((id) => ({ stepId: id, value: id, createdAt: run.updatedAt })),
+        approvedStepIds: [],
+        createdAt: run.createdAt,
+        updatedAt: run.updatedAt,
+      });
+    }
+  }
+
+  listRuns(): readonly DurableRun[] {
+    return this.loadIndexedRunIds()
+      .map((id) => this.cache.getAgentRun<DurableRun>(id))
+      .filter((run): run is DurableRun => run !== undefined);
+  }
+
+  private loadIndexedRunIds(): readonly string[] {
+    return this.cache.getAgentRun<DurableRun>(NativeCacheRunStore.indexId)?.partialOutputs
+      .map((output) => typeof output.value === "string" ? output.value : undefined)
+      .filter((id): id is string => id !== undefined) ?? [];
   }
 }
 
@@ -96,7 +130,7 @@ export class DurableSessionRuntime {
 
   constructor(private readonly store: RunStore = new NativeCacheRunStore()) {}
 
-  createRun(id: string, task: string, steps: readonly AgentStep[]): DurableRun {
+  createRun(id: string, task: string, steps: readonly AgentStep[], threadId?: string): DurableRun {
     if (steps.length === 0) {
       throw new Error("A durable run requires at least one step.");
     }
@@ -115,6 +149,7 @@ export class DurableSessionRuntime {
       approvedStepIds: [],
       createdAt: timestamp,
       updatedAt: timestamp,
+      threadId,
     };
     this.definitions.set(id, steps);
     this.persist(run);
@@ -130,6 +165,10 @@ export class DurableSessionRuntime {
 
   getRun(id: string): DurableRun | undefined {
     return this.store.load(id);
+  }
+
+  listRuns(): Promise<readonly DurableRun[]> | readonly DurableRun[] {
+    return this.store.listRuns();
   }
 
   subscribe(id: string, listener: (run: DurableRun) => void): () => void {
