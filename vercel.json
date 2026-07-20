@@ -2,7 +2,19 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": null,
-  "installCommand": "npm install",
+  "installCommand": "npm ci",
+  "git": {
+    "deploymentEnabled": true
+  },
+  "build": {
+    "env": [
+      "BRAINTRUST_API_KEY",
+      "BRAINTRUST_PROJECT",
+      "AI_GATEWAY_API_KEY",
+      "AI_GATEWAY_BASE_URL",
+      "DATABASE_URL"
+    ]
+  },
   "env": {
     "VERCEL_ORG_ID": "$VERCEL_ORG_ID",
     "VERCEL_PROJECT_ID": "$VERCEL_PROJECT_ID"

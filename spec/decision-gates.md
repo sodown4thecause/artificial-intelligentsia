@@ -3,15 +3,17 @@
 Formal gates to resolve open decisions (W9) and gaps (GA) before they block downstream phases. Owner = function; tied to PRD phases.
 
 ## Gate 0 — Architecture Sign-off (Phase 0 entry/exit)
+
+**Status: CLOSED (conditional G13 exception, Engineering-owned remediation plan).** The closure record is [`docs/gates/gate-0-closure.md`](../docs/gates/gate-0-closure.md).
 | Decision | Owner | Blocks | Status |
 |----------|-------|--------|--------|
 | D8 Native vs WebView surfaces | Eng Lead | Phase 0 UI shell | CLOSED — native-first hybrid decided; see `spec/decisions/D8-native-webview.md` |
 | D9 Default model policy per task class | AI Lead | AI Gateway config | CLOSED — gateway aliases and task-class routing decided; see `spec/decisions/D9-model-policy.md` |
-| D7 Collab engine (internal vs CRDT) | Arch | Phase 3 DOCS-011 | OPEN (defer to Phase 3) — exception documented in `spec/decisions/D7-collab-engine.md` |
-| G13 Validate Eve/AI SDK7/Native SDK/Connect assumptions | Eng | all phases | UPDATED — validation checklist created in `spec/workstreams/w9-open-decisions.md`; Phase 0 exit must still prove |
+| D7 Collab engine (internal vs CRDT) | Arch | Phase 3 DOCS-011 | DEFERRED WITH EXCEPTION — decision deferred to Gate 3; see `spec/decisions/D7-collab-engine.md` |
+| G13 Validate Eve/AI SDK7/Native SDK/Connect assumptions | Eng | all phases | VALIDATED/PARTIAL — local implementation seams evidenced; vendor-backed and connector proof remains under the Gate 0 closure exception; see `docs/gates/gate-0-closure.md` and `spec/workstreams/w9-open-decisions.md` |
 | G9 Promote secret-isolation to explicit FR | Security | acceptance 11 | CLOSED — SEC-001 added to §13.2 |
 
-**Exit:** assumptions validated via Phase 0 exit criteria (§16); D8/D9 resolved; D7 deferred to Phase 3 with documented exception; secret-isolation FR written.
+**Closure-review basis:** PRD §16 exit criteria have been assessed; D8/D9 are resolved, D7 is deferred to Phase 3 with a documented exception, SEC-001 is written, and G13 is validated/partial with a documented remediation exception. Final approval is recorded in `docs/gates/gate-0-closure.md`.
 
 ## Gate 1 — MVP Scope Lock (Phase 1 exit)
 | Decision | Owner | Blocks | Status |
