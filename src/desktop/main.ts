@@ -16,6 +16,8 @@ import { ShortcutModifiers, ShortcutService } from "../native/shortcuts.js";
 import { createDevelopmentAuthProvider } from "../auth/provider.js";
 import { CredentialSessionStore, type OsCredentialService, SessionManager } from "../auth/session.js";
 import { WorkspaceSelectionController } from "../auth/workspace.js";
+import { validateDesktopStartupConfiguration } from "../config/startup.js";
+import type { ServiceEnvironment } from "../config/services.js";
 
 class DesktopCache implements LocalCache {
   constructor(private readonly cache: NativeCache) {}
@@ -108,7 +110,10 @@ function createDesktopAuthentication(): WorkspaceSelectionController {
  * Initializes desktop services. Native bindings are optional so browser previews,
  * tests, and installations without a compiled Zig library remain usable.
  */
-export async function bootstrapDesktop(): Promise<DesktopContext> {
+export async function bootstrapDesktop(
+  environment: ServiceEnvironment = process.env,
+): Promise<DesktopContext> {
+  validateDesktopStartupConfiguration(environment);
   const native = loadNativeLib();
   const credentials = createCredentialManager();
   const masterKey = await credentials.getMasterKey();
