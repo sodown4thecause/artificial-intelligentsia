@@ -16,11 +16,11 @@ Formal gates to resolve open decisions (W9) and gaps (GA) before they block down
 **Closure-review basis:** PRD §16 exit criteria have been assessed; D8/D9 are resolved, D7 is deferred to Phase 3 with a documented exception, SEC-001 is written, and G13 is validated/partial with a documented remediation exception. Final approval is recorded in `docs/gates/gate-0-closure.md`.
 
 ## Gate 1 — MVP Scope Lock (Phase 1 exit)
-**Status: OPEN/BLOCKED.** The criterion-by-criterion closure record is [`docs/gates/gate-1-closure.md`](../docs/gates/gate-1-closure.md). Gate 1 remains blocked pending D1, three-platform native installer/package/keyring smoke evidence, live G13 provider evidence, seven-day human observation with rollback drill, and named human sign-offs.
+**Status: OPEN/BLOCKED.** The criterion-by-criterion closure record is [`docs/gates/gate-1-closure.md`](../docs/gates/gate-1-closure.md). Gate 1 remains blocked pending three-platform native installer/package/keyring smoke evidence, live G13 provider evidence, seven-day human observation with rollback drill, and named human sign-offs.
 
 | Decision | Owner | Blocks | Status |
 |----------|-------|--------|--------|
-| D1 Product/module names | Product | naming only | OPEN |
+| D1 Product/module names | Product | naming only | CLOSED — Creature OS / Go Agent; see `spec/decisions/D1-product-module-names.md` |
 | G1 AI-view output schema | Product+Eng | DOCS-004 | CLOSED — output schema expanded in DOCS-004 |
 | G8 Cross-surface approval UX | UX+Eng | GO-005 | CLOSED — cross-surface approval clarified in GO-005 |
 | G11 Hallucination detector approach | AI Lead | quality metric | CLOSED — detector approach noted in §15.3 |
