@@ -13,6 +13,7 @@
     "test:eval": "node --import tsx --test test/eval/**/*.test.ts",
     "test:e2e": "node --import tsx --test test/e2e/**/*.test.ts",
     "test:redteam": "node --import tsx --test test/redteam/**/*.test.ts",
+    "verify:platform-flows": "tsx scripts/verify-platform-flows.ts",
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "lint": "echo 'lint placeholder'"
   },

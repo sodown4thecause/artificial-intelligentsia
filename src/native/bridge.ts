@@ -17,13 +17,18 @@ export interface NativeLibrary {
   queuePendingCount(): number;
 }
 
-function defaultLibraryPath(): string {
-  const extension = process.platform === "win32" ? "dll" : process.platform === "darwin" ? "dylib" : "so";
-  return resolve(process.cwd(), "native", "zig", "zig-out", "lib", `creature_native.${extension}`);
+/** Returns the platform-specific native library extension, with a Unix fallback. */
+export function nativeLibraryExtension(platform: string): "dll" | "dylib" | "so" {
+  return platform === "win32" ? "dll" : platform === "darwin" ? "dylib" : "so";
+}
+
+/** Builds the default native library location without touching the filesystem. */
+export function defaultNativeLibraryPath(platform: string, workingDirectory = process.cwd()): string {
+  return resolve(workingDirectory, "native", "zig", "zig-out", "lib", `creature_native.${nativeLibraryExtension(platform)}`);
 }
 
 export function loadNativeLib(): NativeLibrary | undefined {
-  const libraryPath = process.env.CREATURE_NATIVE_LIB_PATH ?? defaultLibraryPath();
+  const libraryPath = process.env.CREATURE_NATIVE_LIB_PATH ?? defaultNativeLibraryPath(process.platform);
   if (!existsSync(libraryPath)) return undefined;
   try {
     const library = koffi.load(libraryPath);
