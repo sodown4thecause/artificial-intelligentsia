@@ -17,7 +17,7 @@ class TestIndex implements SearchIndex {
 test("documents create immutable versions, index content, and audit saves", async () => {
   const index = new TestIndex();
   const events: DocumentAuditEvent[] = [];
-  const repository = new DocumentRepository({ canAccess: () => true }, index, { write: (event) => { events.push(event); } });
+  const repository = new DocumentRepository({ authorizer: { canAccess: () => true }, searchIndex: index, audit: { write: (event) => { events.push(event); } } });
   const created = await repository.create(actor, { workspaceId: actor.workspaceId, title: "Plan", content });
   const saved = await repository.save(actor, created.id, { title: "Updated plan", content: { blocks: [{ type: "heading", level: 1, text: "Updated" }] }, expectedVersion: 1, changeSummary: "Renamed" });
   assert.equal(saved.currentVersion, 2);
@@ -27,7 +27,7 @@ test("documents create immutable versions, index content, and audit saves", asyn
 });
 
 test("restore appends a version and stale saves are rejected", async () => {
-  const repository = new DocumentRepository({ canAccess: () => true }, new TestIndex(), { write: () => undefined });
+  const repository = new DocumentRepository({ authorizer: { canAccess: () => true }, searchIndex: new TestIndex(), audit: { write: () => undefined } });
   const created = await repository.create(actor, { workspaceId: actor.workspaceId, title: "Plan", content });
   await repository.save(actor, created.id, { title: "Second", content: { blocks: [{ type: "paragraph", text: "Second draft" }] }, expectedVersion: 1 });
   const restored = await repository.restore(actor, created.id, 1, 2);
@@ -37,7 +37,7 @@ test("restore appends a version and stale saves are rejected", async () => {
 });
 
 test("documents reject secrets and unauthorized users", async () => {
-  const repository = new DocumentRepository({ canAccess: (candidate) => candidate.userId === actor.userId }, new TestIndex(), { write: () => undefined });
+  const repository = new DocumentRepository({ authorizer: { canAccess: (candidate) => candidate.userId === actor.userId }, searchIndex: new TestIndex(), audit: { write: () => undefined } });
   await assert.rejects(repository.create(actor, { workspaceId: actor.workspaceId, title: "Secret", content: { blocks: [{ type: "paragraph", text: "api_key=very-secret-value" }] } }), SecretContentError);
   const created = await repository.create(actor, { workspaceId: actor.workspaceId, title: "Safe", content });
   await assert.rejects(repository.get({ userId: "user-2", workspaceId: actor.workspaceId }, created.id), DocumentAccessError);

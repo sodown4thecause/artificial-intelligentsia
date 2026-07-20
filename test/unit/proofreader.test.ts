@@ -20,7 +20,7 @@ test("proofreader validates issues, groups them, and supports batch decisions", 
 });
 
 test("proofreader rejects stale applications", async () => {
-  const repository = new DocumentRepository({ canAccess: async () => true }, { index: () => {}, remove: () => true, search: () => [] }, { write: async () => {} });
+  const repository = new DocumentRepository({ authorizer: { canAccess: async () => true }, searchIndex: { index: () => {}, remove: () => true, search: () => [] }, audit: { write: async () => {} } });
   const current = await repository.create(actor, { workspaceId: actor.workspaceId, title: document.title, content: document.content });
   const engine = new ProofreaderEngine();
   await repository.save(actor, current.id, { title: current.title, content: current.content, expectedVersion: current.currentVersion });

@@ -6,11 +6,11 @@ import { detectProtectedRanges } from "../../src/rewrites/protected.js";
 import { DocumentRepository } from "../../src/documents/repository.js";
 
 const actor = { userId: "user-1", workspaceId: "workspace-1" };
-const repository = () => new DocumentRepository(
-  { canAccess: async () => true },
-  { index: () => undefined, remove: () => true, search: () => [] },
-  { write: async () => undefined },
-);
+const repository = () => new DocumentRepository({
+  authorizer: { canAccess: async () => true },
+  searchIndex: { index: () => undefined, remove: () => true, search: () => [] },
+  audit: { write: async () => undefined },
+});
 
 async function documentWithText(text: string) {
   return repository().create(actor, { workspaceId: actor.workspaceId, title: "Rewrite test", content: { blocks: [{ type: "paragraph", text }] } });
