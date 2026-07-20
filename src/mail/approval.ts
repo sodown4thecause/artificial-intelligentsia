@@ -1,3 +1,4 @@
+/** @deprecated Use the durable, payload-bound ApprovalGate from ../approvals/gate.js. */
 export class MailDraftApprovalGate {
   private readonly approvedDraftIds = new Set<string>();
 
