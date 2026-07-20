@@ -1,4 +1,5 @@
 import type { DurableRun, DurableSessionRuntime } from "../../agent/runtime.js";
+import { ApprovalPreview } from "./ApprovalPreview.js";
 import { useDurableRun } from "../hooks/useDurableRun.js";
 
 export interface RunPlanStage {
@@ -59,7 +60,12 @@ export function RunTimeline({ runtime, runId, plan = [], sources = [], tools = [
         <section aria-label="Pending approval">
           <h3>Pending approval</h3>
           <p>Step: {run.pendingApprovalStepId}</p>
-          <button type="button" onClick={() => invoke(() => runtime.approve(run.id))}>Approve and resume</button>
+          {run.pendingApprovalRequestId !== undefined && runtime.getApprovalRequest(run.pendingApprovalRequestId) !== undefined && (
+            <ApprovalPreview request={runtime.getApprovalRequest(run.pendingApprovalRequestId)!} auditTrail={runtime.getApprovalAuditEvents().filter((event) => event.requestId === run.pendingApprovalRequestId)} />
+          )}
+          <button type="button" onClick={() => invoke(() => runtime.approve(run.id, "user"))}>Approve and resume</button>
+          <button type="button" onClick={() => invoke(() => runtime.deny(run.id, "user", "Denied from timeline."))}>Deny</button>
+          <button type="button" onClick={() => invoke(() => runtime.revoke(run.id, "user", "Revoked from timeline."))}>Revoke</button>
         </section>
       )}
 

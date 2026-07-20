@@ -7,7 +7,9 @@ import {
   type GmailSearchQuery,
 } from "../connectors/gmail.js";
 import { requireHealthyConnection } from "../connectors/types.js";
-import { MailDraftApprovalGate } from "./approval.js";
+import { ApprovalGate } from "../approvals/gate.js";
+import { mailSendApprovalPolicy } from "../approvals/policy.js";
+import type { ApprovalRequest } from "../approvals/types.js";
 import type {
   MailAuditEvent,
   MailCitation,
@@ -22,7 +24,7 @@ export interface MailAuditLogger {
 }
 
 export interface MailServiceOptions {
-  approvalGate?: MailDraftApprovalGate;
+  approvalGate?: ApprovalGate;
   auditLogger?: MailAuditLogger;
   now?: () => Date;
 }
@@ -33,17 +35,22 @@ export function redactMailSecrets(value: string): string {
   return value.replace(secretPattern, "$1[REDACTED]");
 }
 
-/** Permission-checked Gmail read and draft facade. It intentionally exposes no send method. */
+interface SendCapableGmailConnector extends GmailConnector {
+  sendDraft(draftId: string): GmailDraft;
+}
+
+/** Permission-checked Gmail facade. Sending is supported only by mock connectors and always requires an approval. */
 export class MailService {
   private readonly auditEvents: MailAuditEvent[] = [];
-  private readonly approvalGate: MailDraftApprovalGate;
+  private readonly approvalGate: ApprovalGate;
+  private readonly legacyRequests = new Map<string, string>();
   private readonly now: () => Date;
 
   public constructor(
     private readonly connector: GmailConnector,
     options: MailServiceOptions = {},
   ) {
-    this.approvalGate = options.approvalGate ?? new MailDraftApprovalGate();
+    this.approvalGate = options.approvalGate ?? new ApprovalGate();
     this.now = options.now ?? (() => new Date());
     this.auditLogger = options.auditLogger;
   }
@@ -82,12 +89,50 @@ export class MailService {
     }));
   }
 
-  public approveDraft(draftId: string): void {
-    this.approvalGate.approve(draftId);
+  public requestSendApproval(draft: GmailDraft, requestedBy = "user"): ApprovalRequest {
+    return this.approvalGate.create({
+      actionType: "mail send",
+      target: draft.id,
+      payload: { draftId: draft.id, draft },
+      payloadSummary: `Send draft ${draft.id}.`,
+      policy: mailSendApprovalPolicy,
+      requestedBy,
+    });
   }
 
+  /** @deprecated Use requestSendApproval followed by ApprovalGate.approve. */
+  public approveDraft(draftId: string): void {
+    const requestId = this.legacyRequests.get(draftId);
+    if (requestId === undefined) throw new Error(`No approval request exists for draft ${draftId}.`);
+    this.approvalGate.approve(requestId, "user");
+  }
+
+  /** @deprecated Use requestSendApproval with the complete draft payload. */
   public requireApprovalForExternalSend(draftId: string): void {
-    this.approvalGate.requireApprovalForExternalSend(draftId);
+    let requestId = this.legacyRequests.get(draftId);
+    if (requestId === undefined) {
+      requestId = this.approvalGate.create({
+        actionType: "mail send",
+        target: draftId,
+        payload: { draftId },
+        payloadSummary: `Send draft ${draftId}.`,
+        policy: mailSendApprovalPolicy,
+        requestedBy: "system",
+      }).id;
+      this.legacyRequests.set(draftId, requestId);
+    }
+    const request = this.approvalGate.get(requestId);
+    if (request?.status !== "approved") throw new Error(`Explicit user approval is required before sending draft ${draftId}.`);
+    this.approvalGate.assertApproved(requestId, { draftId });
+  }
+
+  public sendDraft(draft: GmailDraft, approvalRequestId: string): GmailDraft {
+    return this.execute("create_draft", draft.id, [GMAIL_DRAFT_SCOPE], () => {
+      this.approvalGate.assertApproved(approvalRequestId, { draftId: draft.id, draft });
+      const connector = this.connector as GmailConnector & Partial<SendCapableGmailConnector>;
+      if (connector.sendDraft === undefined) throw new Error("The configured mail connector does not support sending drafts.");
+      return connector.sendDraft(draft.id);
+    });
   }
 
   private execute<T>(

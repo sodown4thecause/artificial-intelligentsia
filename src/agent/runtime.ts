@@ -1,4 +1,7 @@
 import { LocalCache } from "../native/cache.js";
+import { ApprovalGate } from "../approvals/gate.js";
+import { automationActionApprovalPolicy } from "../approvals/policy.js";
+import type { ApprovalPolicy } from "../approvals/types.js";
 
 export type RunStatus =
   | "queued"
@@ -31,6 +34,8 @@ export interface DurableRun {
   partialOutputs: PartialOutput[];
   approvedStepIds: string[];
   pendingApprovalStepId?: string;
+  pendingApprovalRequestId?: string;
+  approvalRequestIds?: string[];
   error?: string;
   createdAt: string;
   updatedAt: string;
@@ -45,6 +50,14 @@ export interface StepResult {
 export interface AgentStep {
   id: string;
   requiresApproval?: boolean;
+  approval?: {
+    readonly actionType?: string;
+    readonly target?: string;
+    readonly payload?: unknown;
+    readonly payloadSummary?: string;
+    readonly policy?: ApprovalPolicy;
+    readonly requestedBy?: string;
+  };
   execute(context: StepContext): Promise<StepResult | void> | StepResult | void;
 }
 
@@ -103,6 +116,7 @@ export class NativeCacheRunStore implements RunStore {
         checkpoints: [],
         partialOutputs: ids.concat(run.id).map((id) => ({ stepId: id, value: id, createdAt: run.updatedAt })),
         approvedStepIds: [],
+        approvalRequestIds: [],
         createdAt: run.createdAt,
         updatedAt: run.updatedAt,
       });
@@ -128,7 +142,10 @@ export class DurableSessionRuntime {
   private readonly definitions = new Map<string, readonly AgentStep[]>();
   private readonly listeners = new Map<string, Set<(run: DurableRun) => void>>();
 
-  constructor(private readonly store: RunStore = new NativeCacheRunStore()) {}
+  constructor(
+    private readonly store: RunStore = new NativeCacheRunStore(),
+    private readonly approvalGate: ApprovalGate = new ApprovalGate(),
+  ) {}
 
   createRun(id: string, task: string, steps: readonly AgentStep[], threadId?: string): DurableRun {
     if (steps.length === 0) {
@@ -233,18 +250,44 @@ export class DurableSessionRuntime {
     return this.execute({ ...run, status: "running", error: undefined });
   }
 
-  async approve(id: string): Promise<DurableRun> {
+  async approve(id: string, actor = "user", reason?: string): Promise<DurableRun> {
     const run = this.requireRun(id);
     const stepId = run.pendingApprovalStepId;
-    if (run.status !== "approval_required" || stepId === undefined) {
+    const requestId = run.pendingApprovalRequestId;
+    if (run.status !== "approval_required" || stepId === undefined || requestId === undefined) {
       throw new Error(`Run ${id} has no pending approval.`);
     }
+    this.approvalGate.approve(requestId, actor, reason);
     return this.execute({
       ...run,
       status: "running",
       pendingApprovalStepId: undefined,
-      approvedStepIds: [...run.approvedStepIds, stepId],
+      pendingApprovalRequestId: undefined,
     });
+  }
+
+  deny(id: string, actor = "user", reason = "Approval denied."): DurableRun {
+    const run = this.requireRun(id);
+    if (run.status !== "approval_required" || run.pendingApprovalRequestId === undefined) {
+      throw new Error(`Run ${id} has no pending approval.`);
+    }
+    this.approvalGate.deny(run.pendingApprovalRequestId, actor, reason);
+    return this.persist({ ...run, status: "failed", error: reason, pendingApprovalStepId: undefined, pendingApprovalRequestId: undefined });
+  }
+
+  revoke(id: string, actor = "user", reason = "Approval revoked."): DurableRun {
+    const run = this.requireRun(id);
+    if (run.pendingApprovalRequestId === undefined) throw new Error(`Run ${id} has no pending approval.`);
+    this.approvalGate.revoke(run.pendingApprovalRequestId, actor, reason);
+    return this.persist({ ...run, status: "cancelled", error: reason, pendingApprovalStepId: undefined, pendingApprovalRequestId: undefined });
+  }
+
+  getApprovalRequest(id: string) {
+    return this.approvalGate.get(id);
+  }
+
+  getApprovalAuditEvents() {
+    return this.approvalGate.getAuditEvents();
   }
 
   private async execute(initialRun: DurableRun): Promise<DurableRun> {
@@ -259,8 +302,40 @@ export class DurableSessionRuntime {
       if (step === undefined) {
         return this.persist({ ...run, status: "failed", error: "Run step is unavailable." });
       }
-      if (step.requiresApproval && !run.approvedStepIds.includes(step.id)) {
-        return this.persist({ ...run, status: "approval_required", pendingApprovalStepId: step.id });
+      if (step.requiresApproval) {
+        const payload = this.approvalPayload(run, step);
+        const requestId = (run.approvalRequestIds ?? []).find((candidate) => this.approvalGate.get(candidate)?.stepId === step.id);
+        if (run.approvedStepIds.includes(step.id) && requestId === undefined) {
+          // Preserves already-persisted approvals created before the unified gate existed.
+        } else if (requestId === undefined) {
+          const approval = step.approval;
+          const request = this.approvalGate.create({
+            runId: run.id,
+            stepId: step.id,
+            actionType: approval?.actionType ?? "automation action",
+            target: approval?.target ?? step.id,
+            payload,
+            payloadSummary: approval?.payloadSummary ?? `Execute ${step.id} for ${run.task}.`,
+            policy: approval?.policy ?? automationActionApprovalPolicy,
+            requestedBy: approval?.requestedBy ?? "system",
+          });
+          return this.persist({
+            ...run,
+            status: "approval_required",
+            pendingApprovalStepId: step.id,
+            pendingApprovalRequestId: request.id,
+            approvalRequestIds: [...(run.approvalRequestIds ?? []), request.id],
+          });
+        } else {
+          const request = this.approvalGate.get(requestId);
+          if (request?.status === "pending") {
+            return this.persist({ ...run, status: "approval_required", pendingApprovalStepId: step.id, pendingApprovalRequestId: requestId });
+          }
+          if (request?.status === "denied" || request?.status === "revoked") {
+            return this.persist({ ...run, status: "failed", error: request.reason ?? `Approval ${request.status}.` });
+          }
+          this.approvalGate.assertApproved(requestId, payload);
+        }
       }
 
       try {
@@ -305,5 +380,9 @@ export class DurableSessionRuntime {
       listener(structuredClone(saved));
     }
     return saved;
+  }
+
+  private approvalPayload(run: DurableRun, step: AgentStep): unknown {
+    return step.approval?.payload ?? { runId: run.id, stepId: step.id, task: run.task };
   }
 }
