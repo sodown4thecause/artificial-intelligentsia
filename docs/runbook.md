@@ -66,3 +66,22 @@
 | Customer-impacting stuck approval/run | On-call engineering | Within 30 minutes |
 
 The incident commander owns external updates and closure. Every incident requires a timeline, impact statement, mitigation record, follow-up owner, and post-incident review proportional to severity.
+# Beta triage, rollback, and reconciliation
+
+## Triage
+
+For a beta report, capture the workspace, journey, timestamp, correlation/run ID, connector status, approval ID, canonical citations, and affected external object IDs. Classify unapproved writes, cross-workspace data exposure, missing citations, and unreversible writes as **P0**: disable the affected rule/connector and stop promotion. Classify failed drafts, stale project views, or telemetry gaps as **P1**: pause the affected journey, preserve evidence, and investigate before resuming.
+
+Do not describe deterministic fixture results as customer observation. Record human beta observations separately by calendar day and obtain release-owner sign-off only after the seven-day observation window.
+
+## Rollback
+
+1. Disable the affected automation rule or connector and retain its run history.
+2. Cancel unapproved proposals; do not replay them during recovery.
+3. For approved writes, execute the recorded reversible operation where supported and capture the external result.
+4. If a provider action cannot be reversed, mark it as unreversible, notify the workspace owner, and use the provider's native recovery process.
+5. Re-enable only after the safety gate, citations, and telemetry evidence have been rechecked.
+
+## Reconciliation
+
+Compare each active-rule run history with provider-side objects using the recorded external IDs. Reconcile proposed, applied, reversed, failed, and unreversible counts; investigate every mismatch. Verify that cited research, documents, and project answers still resolve to canonical sources within the requesting workspace. Attach the reconciliation result and any corrective action to the incident record.
