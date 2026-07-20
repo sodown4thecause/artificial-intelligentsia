@@ -1,5 +1,5 @@
 import type { MemoryStore } from "./store.js";
-import type { MemoryItem, MemoryScope, MemoryType } from "./types.js";
+import type { MemoryItem, MemoryRetrievalRequest, MemoryScope, MemoryType } from "./types.js";
 
 /** User-facing controls. Every operation is type-agnostic by design. */
 export class MemoryControls {
@@ -7,6 +7,10 @@ export class MemoryControls {
 
   review(scope?: MemoryScope): MemoryItem[] {
     return this.store.review(scope);
+  }
+
+  retrieve(request: MemoryRetrievalRequest): MemoryItem[] {
+    return this.store.retrieve(request);
   }
 
   correct(id: string, content: string): MemoryItem | undefined {
