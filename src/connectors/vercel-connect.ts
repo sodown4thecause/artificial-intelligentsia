@@ -36,6 +36,39 @@ export class MockVercelConnect implements ManagedConnector {
     requireHealthyConnection(this.getHealth(connectorId), requiredScopes, this.now());
   }
 
+  public listHealth(): readonly ConnectorHealth[] {
+    return [...this.connections.values()];
+  }
+
+  public setEnabled(connectorId: string, enabled: boolean): ConnectorHealth {
+    const current = this.getHealth(connectorId);
+    const next: ConnectorHealth = {
+      ...current,
+      enabled,
+      status: enabled
+        ? current.expiresAt !== null && current.expiresAt <= this.now()
+          ? "expired"
+          : "connected"
+        : "disconnected",
+      error: enabled ? current.error : null,
+    };
+    this.connections.set(connectorId, next);
+    return next;
+  }
+
+  public refresh(connectorId: string): ConnectorHealth {
+    const current = this.getHealth(connectorId);
+    requireHealthyConnection(current, [], this.now());
+    const refreshed: ConnectorHealth = {
+      ...current,
+      status: "connected",
+      lastSuccessfulSyncAt: this.now(),
+      error: null,
+    };
+    this.connections.set(connectorId, refreshed);
+    return refreshed;
+  }
+
   public reconnect(connectorId: string, grantedScopes: readonly ConnectorScope[]): ConnectorHealth {
     const current = this.getHealth(connectorId);
     const reconnected: ConnectorHealth = {
