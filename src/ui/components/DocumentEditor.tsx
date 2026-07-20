@@ -1,10 +1,12 @@
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import type { DocumentBlock, DocumentContent } from "../../documents/types.js";
 
 interface DocumentEditorProps {
   readonly value: DocumentContent;
   readonly onChange: (content: DocumentContent) => void;
   readonly disabled?: boolean;
+  /** Optional adjacent workflow UI, such as the non-destructive rewrite panel. */
+  readonly rewritePanel?: ReactNode;
 }
 
 function updateBlock(blocks: readonly DocumentBlock[], index: number, next: DocumentBlock): DocumentContent {
@@ -19,7 +21,7 @@ function blockText(block: DocumentBlock): string {
 }
 
 /** A controlled, safe block editor. Tables use pipe-separated rows by design. */
-export function DocumentEditor({ value, onChange, disabled = false }: DocumentEditorProps) {
+export function DocumentEditor({ value, onChange, disabled = false, rewritePanel }: DocumentEditorProps) {
   const add = (block: DocumentBlock) => onChange({ blocks: [...value.blocks, block] });
   const edit = (index: number, event: ChangeEvent<HTMLTextAreaElement>) => {
     const block = value.blocks[index];
@@ -36,6 +38,7 @@ export function DocumentEditor({ value, onChange, disabled = false }: DocumentEd
       <button type="button" onClick={() => add({ type: "list", ordered: false, items: [""] })} disabled={disabled}>List</button>
       <button type="button" onClick={() => add({ type: "table", rows: [["", ""]] })} disabled={disabled}>Table</button>
     </div>
+    {rewritePanel}
     {value.blocks.map((block, index) => <label key={`${block.type}-${index}`}>
       <span>{block.type === "heading" ? `Heading ${block.level}` : block.type}</span>
       <textarea aria-label={`${block.type} ${index + 1}`} value={blockText(block)} onChange={(event) => edit(index, event)} disabled={disabled} />
