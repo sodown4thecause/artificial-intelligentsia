@@ -1,48 +1,54 @@
-/** Task-level model selection and per-request spend ceilings (in USD). */
+/** D9 gateway-owned aliases. Provider model IDs must not leave the gateway. */
+export type ModelAlias = 'creature-fast' | 'creature-strong' | 'creature-premium';
+
 export type TaskClass =
   | 'classification'
-  | 'rewrite'
-  | 'extract'
-  | 'summarize'
-  | 'plan'
-  | 'synthesize'
-  | 'draft';
+  | 'rewrite_extraction_summarization'
+  | 'planning_research_synthesis'
+  | 'high_impact_drafting';
+
+export const POLICY_VERSION = 'D9-2026-07-20';
 
 export interface ModelPolicy {
-  defaultModel: string;
-  allowedModels: string[];
-  spendLimit: number;
-  fallbackModels: string[];
+  readonly policyVersion: typeof POLICY_VERSION;
+  readonly alias: ModelAlias;
+  /** Compatibility name for callers that previously consumed a model string. */
+  readonly defaultModel: ModelAlias;
+  readonly allowedModels: readonly ModelAlias[];
+  readonly spendLimit: number;
+  /** Gateway fallback attempts retain this alias while changing provider internally. */
+  readonly fallbackModels: readonly ModelAlias[];
 }
 
-const routineModels = ['openai/gpt-4o-mini', 'google/gemini-2.0-flash-lite'];
-const reasoningModels = ['anthropic/claude-sonnet-4', 'openai/gpt-4.1'];
+export interface WorkspacePolicyOverride {
+  /** Workspace and plan policies may lower, but never raise, the D9 ceiling. */
+  readonly spendLimit?: number;
+}
 
-export const defaultPolicy: Record<TaskClass, ModelPolicy> = {
-  classification: { defaultModel: routineModels[0], allowedModels: routineModels, spendLimit: 0.01, fallbackModels: [routineModels[1]] },
-  rewrite: { defaultModel: routineModels[0], allowedModels: routineModels, spendLimit: 0.02, fallbackModels: [routineModels[1]] },
-  extract: { defaultModel: routineModels[0], allowedModels: routineModels, spendLimit: 0.02, fallbackModels: [routineModels[1]] },
-  summarize: { defaultModel: routineModels[0], allowedModels: routineModels, spendLimit: 0.03, fallbackModels: [routineModels[1]] },
-  plan: { defaultModel: reasoningModels[0], allowedModels: reasoningModels, spendLimit: 0.15, fallbackModels: [reasoningModels[1]] },
-  synthesize: { defaultModel: reasoningModels[0], allowedModels: reasoningModels, spendLimit: 0.2, fallbackModels: [reasoningModels[1]] },
-  draft: { defaultModel: reasoningModels[0], allowedModels: reasoningModels, spendLimit: 0.15, fallbackModels: [reasoningModels[1]] },
+const createPolicy = (alias: ModelAlias, spendLimit: number): ModelPolicy => ({
+  policyVersion: POLICY_VERSION,
+  alias,
+  defaultModel: alias,
+  allowedModels: [alias],
+  spendLimit,
+  fallbackModels: [alias],
+});
+
+export const defaultPolicy: Readonly<Record<TaskClass, ModelPolicy>> = {
+  classification: createPolicy('creature-fast', 0.02),
+  rewrite_extraction_summarization: createPolicy('creature-fast', 0.02),
+  planning_research_synthesis: createPolicy('creature-strong', 0.30),
+  high_impact_drafting: createPolicy('creature-premium', 1.50),
 };
 
-/** Applies a workspace override while retaining a valid default and fallback chain. */
+/** Returns an immutable D9 snapshot with an optional lower workspace ceiling. */
 export function getPolicyForTaskClass(
   taskClass: TaskClass,
-  workspacePolicy: Partial<ModelPolicy> = {},
+  workspacePolicy: WorkspacePolicyOverride = {},
 ): ModelPolicy {
   const base = defaultPolicy[taskClass];
-  const defaultModel = workspacePolicy.defaultModel ?? base.defaultModel;
-  const allowedModels = [...new Set(workspacePolicy.allowedModels ?? base.allowedModels)];
-  const fallbackModels = [...new Set(workspacePolicy.fallbackModels ?? base.fallbackModels)]
-    .filter((model) => model !== defaultModel);
+  const override = workspacePolicy.spendLimit;
+  const spendLimit = override === undefined ? base.spendLimit : Math.min(base.spendLimit, override);
 
-  return {
-    defaultModel,
-    allowedModels: allowedModels.includes(defaultModel) ? allowedModels : [defaultModel, ...allowedModels],
-    spendLimit: workspacePolicy.spendLimit ?? base.spendLimit,
-    fallbackModels,
-  };
+  return { ...base, spendLimit };
 }

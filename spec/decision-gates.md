@@ -5,13 +5,13 @@ Formal gates to resolve open decisions (W9) and gaps (GA) before they block down
 ## Gate 0 — Architecture Sign-off (Phase 0 entry/exit)
 | Decision | Owner | Blocks | Status |
 |----------|-------|--------|--------|
-| D8 Native vs WebView surfaces | Eng Lead | Phase 0 UI shell | OPEN |
-| D9 Default model policy per task class | AI Lead | AI Gateway config | OPEN |
-| D7 Collab engine (internal vs CRDT) | Arch | Phase 3 DOCS-011 | OPEN (defer to Phase 3) |
-| G13 Validate Eve/AI SDK7/Native SDK/Connect assumptions | Eng | all phases | UPDATED — §20 notes validation status; Phase 0 exit must still prove |
+| D8 Native vs WebView surfaces | Eng Lead | Phase 0 UI shell | CLOSED — native-first hybrid decided; see `spec/decisions/D8-native-webview.md` |
+| D9 Default model policy per task class | AI Lead | AI Gateway config | CLOSED — gateway aliases and task-class routing decided; see `spec/decisions/D9-model-policy.md` |
+| D7 Collab engine (internal vs CRDT) | Arch | Phase 3 DOCS-011 | OPEN (defer to Phase 3) — exception documented in `spec/decisions/D7-collab-engine.md` |
+| G13 Validate Eve/AI SDK7/Native SDK/Connect assumptions | Eng | all phases | UPDATED — validation checklist created in `spec/workstreams/w9-open-decisions.md`; Phase 0 exit must still prove |
 | G9 Promote secret-isolation to explicit FR | Security | acceptance 11 | CLOSED — SEC-001 added to §13.2 |
 
-**Exit:** assumptions validated via Phase 0 exit criteria (§16); D8/D9 resolved; secret-isolation FR written.
+**Exit:** assumptions validated via Phase 0 exit criteria (§16); D8/D9 resolved; D7 deferred to Phase 3 with documented exception; secret-isolation FR written.
 
 ## Gate 1 — MVP Scope Lock (Phase 1 exit)
 | Decision | Owner | Blocks | Status |

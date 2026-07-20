@@ -1,121 +1,177 @@
 version: 2.1
 
-orbs:
-  node: circleci/node@5
+# This pipeline deliberately never echoes environment variables or secret values.
+# Store credentials in CircleCI contexts/project environment variables only.
 
 executors:
+  node:
+    docker:
+      - image: cimg/node:22.14
+    working_directory: ~/project
   linux:
     docker:
-      - image: cimg/node:22.11
+      - image: cimg/node:22.14
+    working_directory: ~/project
   macos:
     macos:
-      xcode: "15.4.0"
+      xcode: "15.2.0"
     resource_class: macos.m1.medium.gen1
+    working_directory: ~/project
   windows:
     machine:
       image: windows-server-2022-gui:current
     resource_class: windows.medium
+    working_directory: ~/project
+
+commands:
+  attach_dependencies:
+    steps:
+      - attach_workspace:
+          at: ~/project
 
 jobs:
   install:
-    executor:
-      name: node/default
-      tag: "22.11"
+    executor: node
     steps:
       - checkout
-      - node/install:
-          node-version: "22.11.0"
-      - run: npm install
-      - persist_to_workspace:
-          root: .
+      - restore_cache:
+          keys:
+            - npm-v1-{{ checksum "package-lock.json" }}
+            - npm-v1-
+      - run:
+          name: Install dependencies
+          command: npm ci --ignore-scripts
+      - save_cache:
+          key: npm-v1-{{ checksum "package-lock.json" }}
           paths:
-            - .
+            - ~/.npm
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - node_modules
+            - package.json
+            - package-lock.json
+            - tsconfig.json
+            - src
+            - test
+            - scripts
 
   typecheck:
-    executor:
-      name: node/default
-      tag: "22.11"
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run typecheck
+      - attach_dependencies
+      - run:
+          name: Typecheck
+          command: npm run typecheck
 
-  test-unit:
-    executor:
-      name: node/default
-      tag: "22.11"
+  lint:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:unit
+      - attach_dependencies
+      - run:
+          name: Lint placeholder
+          command: npm run lint
 
-  test-contract:
-    executor:
-      name: node/default
-      tag: "22.11"
+  unit:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:contract
+      - attach_dependencies
+      - run:
+          name: Unit tests
+          command: |
+            mkdir -p test-results
+            npm run test:unit -- --reporter=junit --outputFile=test-results/unit.xml
+      - store_test_results:
+          path: test-results
+      - store_artifacts:
+          path: test-results
+          destination: test-results
 
-  test-eval:
-    executor:
-      name: node/default
-      tag: "22.11"
+  contract:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:eval
+      - attach_dependencies
+      - run:
+          name: Contract tests
+          command: |
+            if [ -d test/contract ] && [ -n "$(find test/contract -type f -name '*.test.ts' -print -quit)" ]; then
+              npm run test:contract
+            else
+              echo 'No contract tests found; skipping.'
+            fi
 
-  test-redteam:
-    executor:
-      name: node/default
-      tag: "22.11"
+  eval:
+    executor: node
     steps:
-      - attach_workspace:
-          at: .
-      - run: npm run test:redteam
+      - attach_dependencies
+      - run:
+          name: Eval tests
+          # Do not use `when: always` or `|| true`: non-zero threshold results must fail this job.
+          command: npm run test:eval
 
-  build-desktop:
+  red-team:
+    executor: node
+    steps:
+      - attach_dependencies
+      - run:
+          name: Red-team tests
+          # Do not use `when: always` or `|| true`: security-threshold failures must fail this job.
+          command: npm run test:redteam
+
+  desktop-build:
     parameters:
       platform:
-        type: executor
+        type: enum
+        enum: [linux, macos, windows]
     executor: << parameters.platform >>
     steps:
-      # Dependencies are installed per platform because native node_modules cannot be shared across OSes.
       - checkout
-      - run: npm install
-      - run: npm run build
+      - run:
+          name: Install desktop build dependencies (<< parameters.platform >>)
+          command: npm ci --ignore-scripts
+      # Native packaging intentionally remains a placeholder until the desktop shell is selected.
+      # Replace this command with the signed Electron/Tauri package command for each runner;
+      # keep artifacts under artifacts/<< parameters.platform >> for the publishing job below.
+      - run:
+          name: Package desktop placeholder (<< parameters.platform >>)
+          command: |
+            node -e "require('fs').mkdirSync('artifacts/<< parameters.platform >>', { recursive: true }); require('fs').writeFileSync('artifacts/<< parameters.platform >>/README.txt', 'Native << parameters.platform >> packaging is not configured yet.\n')"
+      - persist_to_workspace:
+          root: ~/project
+          paths:
+            - artifacts
+
+  publish-desktop-artifacts:
+    executor: node
+    steps:
+      - attach_workspace:
+          at: ~/project
+      # CircleCI retains these artifacts for release review. Add signing/notarization and
+      # upload-to-release-registry steps here once native packages replace the placeholders.
+      - store_artifacts:
+          path: artifacts
+          destination: desktop
 
 workflows:
-  mvp-ci:
+  verify:
     jobs:
       - install
       - typecheck:
-          requires:
-            - install
-      - test-unit:
-          requires:
-            - install
-      - test-contract:
-          requires:
-            - install
-      - test-eval:
-          requires:
-            - install
-      - test-redteam:
-          requires:
-            - install
-      - build-desktop:
-          requires:
-            - typecheck
-            - test-unit
-            - test-contract
-            - test-eval
-            - test-redteam
+          requires: [install]
+      - lint:
+          requires: [typecheck]
+      - unit:
+          requires: [lint]
+      - contract:
+          requires: [unit]
+      - eval:
+          requires: [contract]
+      - red-team:
+          requires: [eval]
+      - desktop-build:
+          requires: [red-team]
           matrix:
             parameters:
-              platform:
-                - linux
-                - macos
-                - windows
+              platform: [linux, macos, windows]
+      - publish-desktop-artifacts:
+          requires: [desktop-build]

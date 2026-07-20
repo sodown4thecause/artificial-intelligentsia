@@ -2,39 +2,72 @@
 // import { generateText } from 'ai';
 // import { gateway } from '@ai-sdk/gateway';
 
-import { FallbackChain, shouldFallback } from './fallback';
-import { getPolicyForTaskClass, type ModelPolicy, type TaskClass } from './policy';
-import type { ModelPolicy as TierPolicy, ModelTier } from '../types';
+import { FallbackChain, shouldFallback } from './fallback.js';
+import {
+  getPolicyForTaskClass,
+  type ModelAlias,
+  type ModelPolicy,
+  type TaskClass,
+  type WorkspacePolicyOverride,
+} from './policy.js';
 
-export type { ModelPolicy, TaskClass } from './policy';
+export type { ModelAlias, ModelPolicy, TaskClass, WorkspacePolicyOverride } from './policy.js';
 
-// Kept while existing agents migrate from the original tier-based router.
-export const DEFAULT_MODEL_POLICY: TierPolicy = { routine: 'cheap', complex: 'strong' };
-
-const tierModels: Record<ModelTier, string> = {
-  cheap: 'router-cheap',
-  standard: 'router-standard',
-  strong: 'router-strong',
-};
-
-type LegacyTaskClass = 'classify' | 'research' | 'high-impact-draft';
-
-export class AIGateway {
-  constructor(private readonly policy: TierPolicy = DEFAULT_MODEL_POLICY) {}
-
-  route(task: TaskClass | LegacyTaskClass): { model: string; tier: ModelTier } {
-    const tier: ModelTier = ['classification', 'classify', 'rewrite', 'extract', 'summarize'].includes(task)
-      ? this.policy.routine
-      : this.policy.complex;
-    return { model: tierModels[tier], tier };
-  }
-
-  withPolicy(policy: TierPolicy): AIGateway {
-    return new AIGateway(policy);
-  }
+export interface RoutingOptions {
+  readonly requestedAlias?: ModelAlias;
+  readonly estimatedCost: number;
+  readonly workspacePolicy?: WorkspacePolicyOverride;
 }
 
-export const aiGateway = new AIGateway();
+export interface PolicyAllowed<TRequest> {
+  readonly kind: 'allowed';
+  readonly taskClass: TaskClass;
+  readonly alias: ModelAlias;
+  readonly policy: ModelPolicy;
+  readonly estimatedCost: number;
+  readonly request: TRequest;
+}
+
+export interface PolicyRejected {
+  readonly kind: 'rejected';
+  readonly taskClass: TaskClass;
+  readonly alias: ModelAlias;
+  readonly policy: ModelPolicy;
+  readonly reason: 'conflicting_requested_alias' | 'budget_exceeded' | 'invalid_cost_estimate';
+  readonly estimatedCost: number;
+}
+
+export type PolicyDecision<TRequest> = PolicyAllowed<TRequest> | PolicyRejected;
+
+/** Resolves a D9 task class before dispatching a provider request. */
+export function routeModel<TRequest>(
+  taskClass: TaskClass,
+  request: TRequest,
+  options: RoutingOptions,
+): PolicyDecision<TRequest> {
+  const policy = getPolicyForTaskClass(taskClass, options.workspacePolicy);
+  const { alias } = policy;
+
+  if (options.requestedAlias !== undefined && options.requestedAlias !== alias) {
+    return {
+      kind: 'rejected', taskClass, alias, policy, estimatedCost: options.estimatedCost,
+      reason: 'conflicting_requested_alias',
+    };
+  }
+
+  if (!Number.isFinite(options.estimatedCost) || options.estimatedCost < 0) {
+    return {
+      kind: 'rejected', taskClass, alias, policy, estimatedCost: options.estimatedCost,
+      reason: 'invalid_cost_estimate',
+    };
+  }
+
+  if (options.estimatedCost > policy.spendLimit) {
+    return { kind: 'rejected', taskClass, alias, policy, estimatedCost: options.estimatedCost, reason: 'budget_exceeded' };
+  }
+
+  return { kind: 'allowed', taskClass, alias, policy, estimatedCost: options.estimatedCost, request };
+}
 
 export interface GatewayConfig {
   gatewayUrl: string;
@@ -42,62 +75,60 @@ export interface GatewayConfig {
   apiKey: string;
 }
 
+export interface GatewayResponse<TRequest = unknown> {
+  readonly model: ModelAlias;
+  readonly request: TRequest;
+  readonly provider: string;
+  readonly status: 'mock';
+}
+
 export interface GatewayClient {
   readonly config: GatewayConfig;
-  generate(request: unknown, model: string): Promise<GatewayResponse>;
+  generate<TRequest>(request: TRequest, model: ModelAlias): Promise<GatewayResponse<TRequest>>;
 }
 
-export interface GatewayResponse {
-  model: string;
-  request: unknown;
-  provider: string;
-  status: 'mock';
-}
-
-export interface RoutedModel {
-  model: string;
-  policy: ModelPolicy;
-  request: unknown;
-}
-
-/** Resolves a model without making a provider request. */
-export function routeModel(taskClass: TaskClass, request: unknown): RoutedModel {
-  const policy = getPolicyForTaskClass(taskClass);
-  return { model: policy.defaultModel, policy, request };
-}
-
-/**
- * Gateway client seam for the MVP. It is deliberately network-free until request
- * authentication and telemetry are introduced; callers receive a typed response.
- */
+/** Gateway client seam for the MVP. */
 export function createGatewayClient(config: GatewayConfig): GatewayClient {
   return {
     config,
-    async generate(request: unknown, model: string): Promise<GatewayResponse> {
+    async generate<TRequest>(request: TRequest, model: ModelAlias): Promise<GatewayResponse<TRequest>> {
       return { model, request, provider: config.provider, status: 'mock' };
     },
   };
 }
 
-/** Routes a request and retries retryable provider errors using policy fallbacks. */
-export async function executeWithFallback(taskClass: TaskClass, request: unknown): Promise<GatewayResponse> {
-  const routed = routeModel(taskClass, request);
-  const client = createGatewayClient({
+export type GatewayExecutionResult<TRequest> =
+  | PolicyRejected
+  | { readonly kind: 'completed'; readonly response: GatewayResponse<TRequest>; readonly attempts: number };
+
+/**
+ * Reuses the exact request for each attempt, preserving its output schema. Each
+ * attempt uses the same alias; the gateway owns any provider-level fallback.
+ */
+export async function executeWithFallback<TRequest>(
+  taskClass: TaskClass,
+  request: TRequest,
+  options: RoutingOptions,
+  client: GatewayClient = createGatewayClient({
     gatewayUrl: process.env.VERCEL_AI_GATEWAY_URL ?? '',
     provider: 'vercel-ai-gateway',
     apiKey: process.env.AI_GATEWAY_API_KEY ?? '',
-  });
-  const chain = new FallbackChain([routed.model, ...routed.policy.fallbackModels]);
-  let model: string | null = routed.model;
+  }),
+): Promise<GatewayExecutionResult<TRequest>> {
+  const decision = routeModel(taskClass, request, options);
+  if (decision.kind === 'rejected') return decision;
 
-  while (model !== null) {
+  const chain = new FallbackChain(decision.alias);
+  let lastError: unknown;
+
+  for (const [index, alias] of chain.models.entries()) {
     try {
-      return await client.generate(request, model);
+      return { kind: 'completed', response: await client.generate(request, alias), attempts: index + 1 };
     } catch (error) {
+      lastError = error;
       if (!shouldFallback(error)) throw error;
-      model = chain.next(model);
     }
   }
 
-  throw new Error(`All fallback models failed for ${taskClass}`);
+  throw lastError;
 }

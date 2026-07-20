@@ -1,35 +1,41 @@
-/** A retryable provider error can be safely retried with a fallback model. */
+import type { ModelAlias } from './policy.js';
+
+export interface FallbackError {
+  readonly status?: number;
+  readonly statusCode?: number;
+  readonly code?: string;
+  readonly responseStarted?: boolean;
+  readonly toolCallEmitted?: boolean;
+}
+
+/** Only failures before output or tool activity may use a gateway fallback. */
 export function shouldFallback(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
 
-  const candidate = error as { status?: unknown; statusCode?: unknown; code?: unknown; message?: unknown };
-  const status = typeof candidate.status === 'number'
-    ? candidate.status
-    : typeof candidate.statusCode === 'number'
-      ? candidate.statusCode
-      : undefined;
-  if (status === 408 || status === 409 || status === 425 || status === 429 || (status !== undefined && status >= 500)) {
-    return true;
-  }
+  const candidate = error as FallbackError;
+  if (candidate.responseStarted || candidate.toolCallEmitted) return false;
 
-  const code = typeof candidate.code === 'string' ? candidate.code.toUpperCase() : '';
+  const status = candidate.status ?? candidate.statusCode;
+  if (status === 408 || (status !== undefined && status >= 500)) return true;
+
+  const code = candidate.code?.toUpperCase() ?? '';
   return ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT'].includes(code);
 }
 
-/** Returns the next distinct model in a fallback chain, if one exists. */
-export function nextModel(failedModel: string, chain: string[]): string | null {
+/** Returns the next attempt while deliberately retaining the gateway alias. */
+export function nextModel(failedModel: ModelAlias, chain: readonly ModelAlias[]): ModelAlias | null {
   const failedIndex = chain.indexOf(failedModel);
-  if (failedIndex === -1) return null;
-  for (let index = failedIndex + 1; index < chain.length; index += 1) {
-    if (chain[index] !== failedModel) return chain[index];
-  }
-  return null;
+  return failedIndex === -1 ? null : chain[failedIndex + 1] ?? null;
 }
 
+/**
+ * Gateway aliases conceal provider selection. Repeated entries mean the gateway
+ * may retry or switch providers without an application-level tier change.
+ */
 export class FallbackChain {
-  constructor(readonly models: string[]) {}
+  readonly models: readonly ModelAlias[];
 
-  next(failedModel: string): string | null {
-    return nextModel(failedModel, this.models);
+  constructor(alias: ModelAlias, attempts = 2) {
+    this.models = Array.from({ length: Math.max(1, attempts) }, () => alias);
   }
 }
