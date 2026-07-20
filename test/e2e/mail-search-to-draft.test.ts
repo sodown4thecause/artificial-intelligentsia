@@ -1,41 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { GMAIL_DRAFT_SCOPE, GMAIL_READ_SCOPE, createMockGmailConnector } from "../../src/connectors/gmail.js";
+import { MailService } from "../../src/mail/service.js";
 
-type Draft = { id: string; threadId: string; body: string };
-
-class MockGmail {
-  readonly externalActions: string[] = [];
-  readonly drafts: Draft[] = [];
-
-  async search(query: string): Promise<Array<{ id: string; messages: string[] }>> {
-    assert.equal(query, "from:customer subject:renewal");
-    return [{ id: "thread-1", messages: ["Can we renew for another year?", "Yes, please send terms."] }];
-  }
-
-  async createDraft(threadId: string, body: string): Promise<Draft> {
-    const draft = { id: "draft-1", threadId, body };
-    this.drafts.push(draft);
-    return draft;
-  }
-
-  async send(draft: Draft, approved: boolean): Promise<void> {
-    if (!approved) throw new Error("Approval is required before sending email");
-    this.externalActions.push(`send:${draft.id}`);
-  }
-}
-
-test("searches Gmail, summarizes a thread, and drafts without sending before approval", async () => {
-  const gmail = new MockGmail();
-  const [thread] = await gmail.search("from:customer subject:renewal");
+test("searches Gmail, summarizes a cited thread, and drafts without a send capability", () => {
+  const service = new MailService(createMockGmailConnector({ health: { connectorId: "gmail-1", provider: "gmail", enabled: true, status: "connected", grantedScopes: [GMAIL_READ_SCOPE, GMAIL_DRAFT_SCOPE], expiresAt: null, lastSuccessfulSyncAt: null, error: null }, messages: [{ id: "message-1", threadId: "thread-1", from: "customer@example.test", to: ["me@example.test"], subject: "Renewal", body: "Can we renew for another year?", receivedAt: new Date(), labels: ["inbox"] }, { id: "message-2", threadId: "thread-1", from: "me@example.test", to: ["customer@example.test"], subject: "Renewal", body: "Yes, please send terms.", receivedAt: new Date(), labels: ["sent"] }] }));
+  const [thread] = service.searchMessages({ from: "customer@example.test", text: "renew" }).threads;
   assert.ok(thread);
-  const summary = `Customer requested renewal terms: ${thread.messages.join(" ")}`;
-  const draft = await gmail.createDraft(thread.id, `${summary}\n\nWe will send the renewal terms shortly.`);
-
-  assert.equal(gmail.drafts.length, 1);
-  assert.match(draft.body, /requested renewal terms/i);
-  await assert.rejects(() => gmail.send(draft, false), /Approval is required/);
-  assert.deepEqual(gmail.externalActions, []);
-
-  await gmail.send(draft, true);
-  assert.deepEqual(gmail.externalActions, ["send:draft-1"]);
+  const summary = service.summarizeThread(thread.id);
+  const draft = service.createDraft({ threadId: thread.id, to: ["customer@example.test"], subject: "Renewal terms", body: `${summary.summary}\n\nWe will send the renewal terms shortly.`, idempotencyKey: "e2e-renewal" });
+  assert.equal(summary.citations.length, 2);
+  assert.equal(draft.status, "draft");
+  assert.throws(() => service.requireApprovalForExternalSend(draft.id), /Explicit user approval/);
+  assert.equal("send" in service, false);
 });
