@@ -82,7 +82,7 @@ jobs:
           name: Unit tests
           command: |
             mkdir -p test-results
-            npm run test:unit -- --reporter=junit --outputFile=test-results/unit.xml
+            npm run test:unit -- --test-reporter=junit --test-reporter-destination=test-results/unit.xml
       - store_test_results:
           path: test-results
       - store_artifacts:
