@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test test/**/*.test.ts test/**/*.test.tsx",
-    "test:unit": "node --import tsx --test test/unit/**/*.test.ts test/unit/**/*.test.tsx",
+    "test:unit": "tsx scripts/run-unit-tests.ts",
     "test:contract": "node --import tsx --test test/contract/**/*.test.ts",
     "test:eval": "node --import tsx --test test/eval/**/*.test.ts",
     "test:e2e": "node --import tsx --test test/e2e/**/*.test.ts",
