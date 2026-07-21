@@ -15,8 +15,8 @@
     "test:redteam": "node --import tsx --test test/redteam/**/*.test.ts",
     "verify:platform-flows": "tsx scripts/verify-platform-flows.ts",
     "verify:coverage": "tsx scripts/verify-coverage.ts",
-    "native:build": "zig build --build-file native/zig/build.zig",
-    "native:test": "zig build test --build-file native/zig/build.zig",
+    "native:build": "cd native/zig && zig build",
+    "native:test": "cd native/zig && zig build test",
     "lint": "echo 'lint placeholder'"
   },
   "dependencies": {

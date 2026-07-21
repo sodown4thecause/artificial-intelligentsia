@@ -193,9 +193,9 @@ jobs:
                   npm run native:test
                   npm run native:build
                   npx tsx scripts/smoke-native-library.ts --platform windows
-                  npx tsx scripts/native-build-evidence.ts --platform windows --library native/zig/zig-out/lib/creature_native.dll --output native/zig/zig-out/lib/native-evidence-windows.json --smoke-passed true
+                  npx tsx scripts/native-build-evidence.ts --platform windows --library native/zig/zig-out/bin/creature_native.dll --output native/zig/zig-out/bin/native-evidence-windows.json --smoke-passed true
                   New-Item -ItemType Directory -Force -Path artifacts\windows\native
-                  Copy-Item native\zig\zig-out\lib\creature_native.dll,native\zig\zig-out\lib\creature_native.dll.sha256,native\zig\zig-out\lib\native-evidence-windows.json artifacts\windows\native\
+                  Copy-Item native\zig\zig-out\bin\creature_native.dll,native\zig\zig-out\bin\creature_native.dll.sha256,native\zig\zig-out\bin\native-evidence-windows.json artifacts\windows\native\
       - when:
           condition:
             not:
