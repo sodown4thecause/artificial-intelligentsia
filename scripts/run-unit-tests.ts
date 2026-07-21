@@ -1,7 +1,7 @@
 import { readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const unitTestDirectory = join(rootDirectory, "test", "unit");
