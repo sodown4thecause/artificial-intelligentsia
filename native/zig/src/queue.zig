@@ -48,14 +48,14 @@ pub const OfflineQueue = struct {
 
     /// Returns the oldest pending operation and changes it to processing.
     pub fn dequeue(self: *OfflineQueue) !?Operation {
-        var pending = try self.pending();
-        defer self.freeOperations(pending);
-        if (pending.len == 0) return null;
-        var operation = pending[0];
-        pending[0].id = &.{};
-        pending[0].operation_type = &.{};
-        pending[0].payload = &.{};
-        pending[0].error_message = null;
+        var pending_operations = try self.pending();
+        defer self.freeOperations(pending_operations);
+        if (pending_operations.len == 0) return null;
+        var operation = pending_operations[0];
+        pending_operations[0].id = &.{};
+        pending_operations[0].operation_type = &.{};
+        pending_operations[0].payload = &.{};
+        pending_operations[0].error_message = null;
         operation.status = .processing;
         try self.store(&operation);
         return operation;

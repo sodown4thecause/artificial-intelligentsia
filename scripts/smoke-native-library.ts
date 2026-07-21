@@ -17,7 +17,8 @@ export function nativeLibraryFileName(platform: NativePlatform): string {
 }
 
 export function nativeLibraryPath(platform: NativePlatform, repositoryRoot = process.cwd()): string {
-  return path.join(repositoryRoot, "native", "zig", "zig-out", "lib", nativeLibraryFileName(platform));
+  const outputDirectory = platform === "windows" ? "bin" : "lib";
+  return path.join(repositoryRoot, "native", "zig", "zig-out", outputDirectory, nativeLibraryFileName(platform));
 }
 
 export function parsePlatform(arguments_: readonly string[]): NativePlatform {

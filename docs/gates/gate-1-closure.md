@@ -67,7 +67,7 @@ This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd
 | Criterion | Status | Evidence / remaining limitation |
 |---|---|---|
 | D1 product/module names | PASS/CLOSED | [`D1-product-module-names.md`](../../spec/decisions/D1-product-module-names.md) locks **Creature OS** and **Go Agent**. |
-| Native library compilation | PARTIAL | Desktop CI builds/tests the host-native Zig dynamic library and retains a per-OS library plus checksum. |
+| Native library compilation | PARTIAL | The [`desktop-build` CircleCI matrix](../../.circleci/config.yml) builds, tests, smokes, and retains the host-native Zig dynamic library with per-OS library, checksum, and evidence artifacts. This remains PARTIAL until successful CircleCI runs are recorded. |
 | Installers and runnable desktop launch | BLOCKED/NOT IMPLEMENTED | No installer framework or runnable desktop executable exists. |
 | Signing/notarization | BLOCKED/NOT IMPLEMENTED | No signing or notarization implementation exists. |
 | Production OS keyring write/read/delete | BLOCKED/NOT IMPLEMENTED | No production OS keyring adapter exists. |

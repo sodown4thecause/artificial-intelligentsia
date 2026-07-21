@@ -62,5 +62,5 @@ Record hardware, OS version, app build, network conditions, account size, and p5
 # Gate 1 native evidence status (2026-07-20)
 
 - **D1 naming:** PASS/CLOSED — product: **Creature OS**; primary assistant module: **Go Agent**.
-- **Native library compilation:** PARTIAL — CI builds and tests the host-native Zig dynamic library and retains per-OS library/checksum artifacts.
+- **Native library compilation:** PARTIAL — the [`desktop-build` CircleCI matrix](../.circleci/config.yml) builds, tests, smokes, and retains the host-native Zig dynamic library with per-OS library/checksum/evidence artifacts. This remains PARTIAL until successful CircleCI runs are recorded.
 - **Installers, runnable desktop launch, signing/notarization, and production OS keyring write/read/delete:** BLOCKED/NOT IMPLEMENTED. Native library artifacts are not installers or desktop launch evidence.

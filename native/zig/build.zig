@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    library.linkLibC();
     b.installArtifact(library);
 
     const unit_tests = b.addTest(.{
@@ -17,6 +18,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    unit_tests.linkLibC();
     const run_unit_tests = b.addRunArtifact(unit_tests);
     const test_step = b.step("test", "Run native library tests");
     test_step.dependOn(&run_unit_tests.step);
