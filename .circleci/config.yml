@@ -52,11 +52,11 @@ jobs:
             - package.json
             - package-lock.json
             - tsconfig.json
-             - src
-             - test
-             - scripts
-             - docs
-             - spec
+            - src
+            - test
+            - scripts
+            - docs
+            - spec
 
   typecheck:
     executor: node
