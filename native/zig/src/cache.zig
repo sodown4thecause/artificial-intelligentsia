@@ -57,7 +57,7 @@ pub const Cache = struct {
         };
         try self.entries.append(.{ .key = try self.allocator.dupe(u8, key), .value = try self.allocator.dupe(u8, value) });
         errdefer {
-            const entry = self.entries.pop();
+            const entry = self.entries.pop().?;
             self.allocator.free(entry.key);
             self.allocator.free(entry.value);
         }

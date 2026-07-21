@@ -25,7 +25,7 @@ pub export fn creature_cache_init(path: [*:0]const u8, master_key: [*:0]const u8
 }
 
 pub export fn creature_cache_set(key: [*:0]const u8, value: [*:0]const u8) callconv(.c) c_int {
-    const active = if (global_cache) |*value| value else return -1;
+    const active = if (global_cache) |*active_cache| active_cache else return -1;
     active.set(std.mem.span(key), std.mem.span(value)) catch return -1;
     return 0;
 }
