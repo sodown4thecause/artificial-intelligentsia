@@ -28,7 +28,7 @@ npm run test:redteam
 
 `npm run verify:platform-flows` emits one artifact-friendly line per platform label. Every line must list `email-to-work`, `document-improvement`, `approval-resume`, and `automation-simulate-apply-reverse`. The deterministic tests select these labels directly, so they do not inspect the host filesystem, load a native library, access a provider, or require secrets.
 
-This matrix is a simulation of the shared desktop workflow contract, not a native-package or OS-keyring smoke test. Release candidates still require separate evidence that the packaged Windows DLL and Credential Manager, macOS dylib and Keychain, and Linux shared object and Secret Service-compatible keyring initialize successfully on their target architecture. Preserve that evidence with the release artifacts; it is not produced by this CI workflow.
+The native-library CI matrix also compiles, build-tests, smokes, checksums, records evidence JSON for, and retains each platform library. It is not an installer/package, installation, launched-desktop, or OS-keyring smoke test. Release candidates still require separate evidence that installed Windows, macOS, and Linux desktop packages and their credential services initialize successfully on their target architecture.
 
 ## Prerequisites
 
@@ -59,8 +59,11 @@ Record hardware, OS version, app build, network conditions, account size, and p5
 - Native installers are not published until the signing, notarization, and packaging commands replace the CI placeholders. The current CI artifact is a release-review placeholder, not an installable product.
 - Offline work is limited to data already cached locally; provider actions require connectivity and a valid authorization.
 - Screen-reader, high-contrast, and non-English locale validation is tracked per release and must be recorded in release notes when incomplete.
-# Gate 1 native evidence status (2026-07-20)
+# Gate 1 native evidence status (2026-07-22)
 
-- **D1 naming:** PASS/CLOSED — product: **Creature OS**; primary assistant module: **Go Agent**.
-- **Native library compilation:** PARTIAL — the [`desktop-build` CircleCI matrix](../.circleci/config.yml) builds, tests, smokes, and retains the host-native Zig dynamic library with per-OS library/checksum/evidence artifacts. This remains PARTIAL until successful CircleCI runs are recorded.
-- **Installers, runnable desktop launch, signing/notarization, and production OS keyring write/read/delete:** BLOCKED/NOT IMPLEMENTED. Native library artifacts are not installers or desktop launch evidence.
+| Item | Status | Evidence / limitation |
+| --- | --- | --- |
+| D1 naming | **PASS/CLOSED** | Product: **Creature OS**; primary assistant module: **Go Agent**. |
+| Native-library CI | **PASS** | [Successful CircleCI workflow](https://app.circleci.com/workflow/67015e34-5490-4e31-9520-3e90477a2bd8): [macOS 142](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/142), [Windows 143](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/143), [Linux 144](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/144), and [artifact publication 145](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/145) passed native-library compilation, build tests, smoke checks, checksums, evidence JSON, and retention. [PR #30](https://github.com/sodown4thecause/artificial-intelligentsia/pull/30) (`ec9139a`) introduced this matrix/evidence. |
+| Published native-library archives | **PASS** | The [`v0.1.0` prerelease](https://github.com/sodown4thecause/artificial-intelligentsia/releases/tag/v0.1.0) contains platform native-library archives; [PR #31](https://github.com/sodown4thecause/artificial-intelligentsia/pull/31) (`f3af0d2`) added README and release links. |
+| Installer/package, installation, launch, signing/notarization, and production OS keyring write/read/delete | **BLOCKED/NOT IMPLEMENTED** | Native-library archives are developer artifacts only, not installers or runnable desktop packages. |

@@ -16,7 +16,7 @@ Formal gates to resolve open decisions (W9) and gaps (GA) before they block down
 **Closure-review basis:** PRD §16 exit criteria have been assessed; D8/D9 are resolved, D7 is deferred to Phase 3 with a documented exception, SEC-001 is written, and G13 is validated/partial with a documented remediation exception. Final approval is recorded in `docs/gates/gate-0-closure.md`.
 
 ## Gate 1 — MVP Scope Lock (Phase 1 exit)
-**Status: OPEN/BLOCKED.** The criterion-by-criterion closure record is [`docs/gates/gate-1-closure.md`](../docs/gates/gate-1-closure.md). Gate 1 remains blocked pending three-platform native installer/package/keyring smoke evidence, live G13 provider evidence, seven-day human observation with rollback drill, and named human sign-offs.
+**Status: OPEN/BLOCKED.** The criterion-by-criterion closure record is [`docs/gates/gate-1-closure.md`](../docs/gates/gate-1-closure.md). Native-library CI evidence is PASS on Windows, macOS, and Linux, but Gate 1 remains blocked pending installer/package, installation, launch, production OS-keyring, and signing/notarization evidence; live G13 provider evidence; seven-day human observation with rollback drill; and named human sign-offs.
 
 | Decision | Owner | Blocks | Status |
 |----------|-------|--------|--------|
@@ -25,7 +25,7 @@ Formal gates to resolve open decisions (W9) and gaps (GA) before they block down
 | G8 Cross-surface approval UX | UX+Eng | GO-005 | CLOSED — cross-surface approval clarified in GO-005 |
 | G11 Hallucination detector approach | AI Lead | quality metric | CLOSED — detector approach noted in §15.3 |
 
-**Exit:** 4 journeys (§9) pass acceptance; G1/G8 closed; D1 named. Current local deterministic coverage does not close native, live-provider, or human-observation evidence requirements.
+**Exit:** 4 journeys (§9) pass acceptance; G1/G8 closed; D1 named. D1 is closed for Creature OS / Go Agent. Native-library CI does not close the remaining installer/package, installation, launch, production OS-keyring, or signing/notarization requirements; live-provider and human-observation evidence also remain required.
 
 ## Gate 2 — Pro Packaging (Phase 2)
 | Decision | Owner | Blocks | Status |

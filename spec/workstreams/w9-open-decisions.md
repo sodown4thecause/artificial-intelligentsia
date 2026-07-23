@@ -2,7 +2,7 @@
 
 **Purpose:** Track validation of the technical-source assumptions in PRD §20. Entries are updated with implementation evidence, date, and links to the validating code or test.
 
-**Last reviewed:** 2026-07-20  
+**Last reviewed:** 2026-07-22
 **Gate 0 disposition:** Complete evidence has been finalized below. G13 is **Validated/Partial** for closure review: implementation seams are evidenced, while live vendor/platform validation remains an explicit exception rather than an unrecorded open item. See [`docs/gates/gate-0-closure.md`](../../docs/gates/gate-0-closure.md).
 
 **Status definitions:**
@@ -36,9 +36,9 @@
 - **Assumption statement:** Native SDK supports native rendering, operating-system credential storage, packaging, and stable cross-platform desktop behavior for Creature.
 - **Verification method:** Build a minimal native desktop shell that renders core UI, stores and retrieves a test credential through the operating-system credential service, packages for each supported desktop platform, and runs smoke tests on each target. Record versions, package artifacts, and platform-specific defects.
 - **Owner:** Client Engineering
-- **Status:** Partial — implementation evidence finalized; cross-platform Native SDK validation outstanding
-- **Evidence:** [`src/native/bridge.ts`](../../src/native/bridge.ts) selects the native library extension for Windows, macOS, and Linux and provides the native cache/queue boundary with encrypted fallback storage. [`src/desktop/main.ts`](../../src/desktop/main.ts) contains the desktop credential-service integration. Desktop coverage is present in [`test/unit/desktop.test.ts`](../../test/unit/desktop.test.ts) and [`test/eval/desktop.test.ts`](../../test/eval/desktop.test.ts).
-- **Blockers / remaining proof:** No recorded package artifacts or smoke-test results prove native rendering, operating-system credential round trips, packaging, and stable behavior on every supported desktop platform. Run those checks on Windows, macOS, and Linux; attach artifacts and platform-specific results before marking **Validated**.
+- **Status:** Partial — native-library CI validation is PASS; installer/package, installation, launch, production OS-keyring, and signing/notarization validation remain outstanding
+- **Evidence:** [`src/native/bridge.ts`](../../src/native/bridge.ts) selects the native library extension for Windows, macOS, and Linux and provides the native cache/queue boundary with encrypted fallback storage. [`src/desktop/main.ts`](../../src/desktop/main.ts) contains the desktop credential-service integration. Desktop coverage is present in [`test/unit/desktop.test.ts`](../../test/unit/desktop.test.ts) and [`test/eval/desktop.test.ts`](../../test/eval/desktop.test.ts). [PR #30](https://github.com/sodown4thecause/artificial-intelligentsia/pull/30) ([`ec9139a`](https://github.com/sodown4thecause/artificial-intelligentsia/commit/ec9139a)) introduced the native CI matrix/evidence; the [successful workflow](https://app.circleci.com/workflow/67015e34-5490-4e31-9520-3e90477a2bd8) records PASS for [macOS 142](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/142), [Windows 143](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/143), [Linux 144](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/144), and [artifact publication 145](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/145): native-library compilation, build tests, smoke checks, checksums, evidence JSON, and retention. The [`v0.1.0` prerelease](https://github.com/sodown4thecause/artificial-intelligentsia/releases/tag/v0.1.0) publishes platform native-library archives.
+- **Blockers / remaining proof:** The published archives are native libraries/developer artifacts, not installers or runnable desktop packages. Prove installer/package creation, installation, launched-desktop behavior, production OS credential round trips, and signing/notarization on Windows, macOS, and Linux before marking **Validated**.
 - **Blocker escalation path:** Client Engineering → Architecture for adapter or fallback design → Product for supported-platform scope. Escalate unresolved Phase 0 exit gaps through G13 in `spec/decision-gates.md`.
 
 ## Vercel Connect
