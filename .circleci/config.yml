@@ -244,14 +244,22 @@ jobs:
                      if (-not (Test-Path -LiteralPath $Destination -PathType Container)) { throw "Verified archive did not contain expected directory $Destination." }
                    }
                    function Invoke-CheckedProcess([string]$FilePath, [string[]]$ArgumentList, [int]$TimeoutSeconds) {
-                     $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru
+                     $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+                     $startInfo.FileName = $FilePath
+                     $startInfo.Arguments = [string]::Join(' ', $ArgumentList)
+                     $startInfo.UseShellExecute = $false
+                     $startInfo.CreateNoWindow = $true
+                     $process = New-Object System.Diagnostics.Process
+                     $process.StartInfo = $startInfo
+                     if (-not $process.Start()) { throw "Could not start: $FilePath $($ArgumentList -join ' ')" }
                      if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
                        & taskkill.exe /PID $process.Id /T /F | Out-Null
                        throw "Timed out after $TimeoutSeconds seconds: $FilePath $($ArgumentList -join ' ')"
                      }
                      $process.Refresh()
-                     if ($null -eq $process.ExitCode) { throw "Command exited without an exit code: $FilePath $($ArgumentList -join ' ')" }
-                     if ($process.ExitCode -ne 0) { throw "Command failed with exit code $($process.ExitCode): $FilePath $($ArgumentList -join ' ')" }
+                     $exitCode = $process.ExitCode
+                     if ($null -eq $exitCode) { throw "Command exited without an exit code: $FilePath $($ArgumentList -join ' ')" }
+                     if ($exitCode -ne 0) { throw "Command failed with exit code $exitCode: $FilePath $($ArgumentList -join ' ')" }
                    }
 
                    New-Item -ItemType Directory -Force -Path $toolchainRoot | Out-Null
