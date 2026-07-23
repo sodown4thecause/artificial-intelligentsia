@@ -1,0 +1,8 @@
+{
+  "name": "@creature-os/desktop-native",
+  "private": true,
+  "description": "Creature OS Go Agent Windows native shell.",
+  "dependencies": {
+    "@native-sdk/core": "0.5.4"
+  }
+}

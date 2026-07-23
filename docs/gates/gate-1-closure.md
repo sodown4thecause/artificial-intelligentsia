@@ -4,6 +4,12 @@
 **Review date:** 2026-07-22
 **Gate status: BLOCKED.** Gate 1 is **OPEN** in the decision tracker until its blockers are resolved and named humans sign the record.
 
+## Native shell increment — 2026-07-23
+
+The isolated `apps/desktop-native/` shell uses the official Vercel Native SDK CLI pinned to `@native-sdk/cli` **0.5.4**. It is a TypeScript model/update core plus `.native` markup, with the SDK's D8 adapter/build boundary; it does not embed the existing Node/React application. Native SDK v0.5.4 requires its `gpu_surface` canvas renderer for this markup; that renderer is not a WebView and the shell declares no web, network, filesystem, shell, or credentials permission. Its Windows directory package and launch smoke are one local incremental package/launch result only. They do **not** close Gate 1 and do not establish an installer, signing, OS-keyring handling, macOS/Linux packaging, or live Go Agent integration.
+
+Local Windows-only evidence on 2026-07-23: `native check`, `native build`, and `native package --target windows` passed with Zig 0.16.0; the produced directory package contained `package/windows/bin/creature-os-go-agent.exe`. The launch smoke held that executable alive for 2,322 ms, terminated it, and recorded ignored local JSON evidence. This is not installer, signing, keyring, live-service, human-observation, or sign-off evidence.
+
 ## Scope and evidence rules
 
 This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd/CREATURE_PRD_EVE_NATIVE_SDK.md#17-mvp-acceptance-criteria) against `main` after [PR #30](https://github.com/sodown4thecause/artificial-intelligentsia/pull/30) ([`ec9139a`](https://github.com/sodown4thecause/artificial-intelligentsia/commit/ec9139a)) and [PR #31](https://github.com/sodown4thecause/artificial-intelligentsia/pull/31) ([`f3af0d2`](https://github.com/sodown4thecause/artificial-intelligentsia/commit/f3af0d2)). Local tests and deterministic fixtures are evidence of implementation behavior only. They are **not** evidence that native installers work, that authorized people used live providers, or that humans observed the product for seven calendar days.
