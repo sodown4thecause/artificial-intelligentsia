@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Creature — AI-Native Work Operating System (Vercel Eve / AI SDK 7 / Native SDK / Mnemosyne)",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "typecheck": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
     "test": "tsx scripts/run-test-suite.ts all",
     "test:unit": "tsx scripts/run-test-suite.ts unit",
     "test:contract": "tsx scripts/run-test-suite.ts contract",
@@ -17,6 +17,11 @@
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "native:build": "cd native/zig && zig build",
     "native:test": "cd native/zig && zig build test",
+    "desktop:verify-package:windows": "tsx scripts/desktop-package-smoke.ts",
+    "desktop:check": "native check apps/desktop-native",
+    "desktop:build": "native build apps/desktop-native",
+    "desktop:package:windows": "cd apps/desktop-native && native package --target windows --output package/windows",
+    "desktop:smoke:windows": "tsx scripts/desktop-package-smoke.ts",
     "lint": "echo 'lint placeholder'"
   },
   "dependencies": {
@@ -28,6 +33,7 @@
   },
   "devDependencies": {
     "@braintrust/core": "^0.0.95",
+    "@native-sdk/cli": "0.5.4",
     "@types/node": "^22.10.0",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",

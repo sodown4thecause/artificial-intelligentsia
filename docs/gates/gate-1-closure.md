@@ -4,6 +4,12 @@
 **Review date:** 2026-07-22
 **Gate status: BLOCKED.** Gate 1 is **OPEN** in the decision tracker until its blockers are resolved and named humans sign the record.
 
+## Native shell increment — 2026-07-23
+
+The isolated `apps/desktop-native/` shell uses the official Vercel Native SDK CLI pinned to `@native-sdk/cli` **0.5.4**. It is a TypeScript model/update core plus `.native` markup, with the SDK's D8 adapter/build boundary; it does not embed the existing Node/React application. Native SDK v0.5.4 requires its `gpu_surface` canvas renderer for this markup; that renderer is not a WebView and the shell declares no web, network, filesystem, shell, or credentials permission. Its Windows directory package and launch smoke are one local incremental package/launch result only. They do **not** close Gate 1 and do not establish an installer, signing, OS-keyring handling, macOS/Linux packaging, or live Go Agent integration.
+
+Local Windows-only evidence on 2026-07-23: `native check`, `native build`, and `native package --target windows` produced a fresh `apps/desktop-native/package/windows/bin/creature-os-go-agent.exe` with its exact SHA-256 recorded. The local CLI version was observed as 0.5.4; the smoke requires a responsive top-level window titled exactly `Creature OS - Go Agent` and bounded process-tree cleanup, then records ignored local JSON evidence. This is not installed-app, human-interaction, installer, signing, keyring, live-service, macOS/Linux, or sign-off evidence.
+
 ## Scope and evidence rules
 
 This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd/CREATURE_PRD_EVE_NATIVE_SDK.md#17-mvp-acceptance-criteria) against `main` after [PR #30](https://github.com/sodown4thecause/artificial-intelligentsia/pull/30) ([`ec9139a`](https://github.com/sodown4thecause/artificial-intelligentsia/commit/ec9139a)) and [PR #31](https://github.com/sodown4thecause/artificial-intelligentsia/pull/31) ([`f3af0d2`](https://github.com/sodown4thecause/artificial-intelligentsia/commit/f3af0d2)). Local tests and deterministic fixtures are evidence of implementation behavior only. They are **not** evidence that native installers work, that authorized people used live providers, or that humans observed the product for seven calendar days.
@@ -69,3 +75,8 @@ This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd
 | Native-library compilation, native build tests, smoke checks, checksums, evidence JSON, and retention | **PASS** | [CircleCI workflow](https://app.circleci.com/workflow/67015e34-5490-4e31-9520-3e90477a2bd8): [macOS job 142](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/142), [Windows job 143](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/143), [Linux job 144](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/144), and [artifact publication job 145](https://circleci.com/gh/sodown4thecause/artificial-intelligentsia/145). |
 | Published native-library archives | **PASS** | [`v0.1.0` prerelease](https://github.com/sodown4thecause/artificial-intelligentsia/releases/tag/v0.1.0) publishes platform native-library archives; [PR #31](https://github.com/sodown4thecause/artificial-intelligentsia/pull/31) (`f3af0d2`) added the README and release links. |
 | Installer/package, installation, launched desktop, OS keyring, and signing/notarization | **BLOCKED** | The published artifacts are native libraries/developer artifacts only, not installers or runnable desktop packages. |
+# Windows package evidence clarification
+
+The Windows evidence is a **local directory package** and an automated packaged-window readiness smoke only. A PASS proves that a freshly generated `bin/creature-os-go-agent.exe` opened a responsive `Creature OS - Go Agent` top-level window; it is not human interactive UI validation or an installed-application launch.
+
+This does not close Gate 1 or the Windows installer criterion. An installer, installation evidence, signing, production keyring validation, and human interactive launch validation remain outstanding.

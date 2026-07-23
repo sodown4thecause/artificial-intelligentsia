@@ -45,3 +45,10 @@ native/zig/zig-out/
 *.dll
 *.so
 *.dylib
+
+# Vercel Native SDK local caches, directory packages, and launch-smoke evidence
+apps/desktop-native/.native/
+apps/desktop-native/.zig-cache/
+apps/desktop-native/zig-out/
+apps/desktop-native/package/
+apps/desktop-native/evidence/
