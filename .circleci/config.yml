@@ -199,6 +199,81 @@ jobs:
                   Copy-Item native\zig\zig-out\bin\creature_native.dll,native\zig\zig-out\bin\creature_native.dll.sha256,native\zig\zig-out\bin\native-evidence-windows.json artifacts\windows\native\
       - when:
           condition:
+            equal: [windows, << parameters.platform >>]
+          steps:
+            - run:
+                name: Verify Vercel Native Windows directory package and responsive window
+                shell: powershell.exe
+                no_output_timeout: 20m
+                command: |
+                   $ErrorActionPreference = 'Stop'
+                   $nodeVersion = '22.15.0'
+                   $nodeArchive = "node-v$nodeVersion-win-x64.zip"
+                   # Pinned from https://nodejs.org/dist/v22.15.0/SHASUMS256.txt.
+                   $nodeSha256 = '06067d4f0d463f90ed803d5eca5b039a05dec5d70fc7b7cc254803a59bd0e27c'
+                   $zigVersion = '0.16.0'
+                   $zigArchive = "zig-x86_64-windows-$zigVersion.zip"
+                   # Pinned from https://ziglang.org/download/index.json (0.16.0 x86_64-windows).
+                   $zigSha256 = '68659eb5f1e4eb1437a722f1dd889c5a322c9954607f5edcf337bc3684a75a7e'
+                   $toolchainRoot = Join-Path $env:TEMP 'creature-vercel-native-toolchains'
+                   $nodeArchivePath = Join-Path $toolchainRoot $nodeArchive
+                   $zigArchivePath = Join-Path $toolchainRoot $zigArchive
+                   $nodeRoot = Join-Path $toolchainRoot "node-v$nodeVersion-win-x64"
+                   $zigRoot = Join-Path $toolchainRoot "zig-x86_64-windows-$zigVersion"
+                   $packageRoot = 'apps\desktop-native\package\windows'
+                   $evidenceSource = 'apps\desktop-native\evidence\windows-package-verify.json'
+                   $artifactRoot = 'artifacts\windows\desktop-native'
+                   $commandTimeoutSeconds = 900
+
+                   function Get-Sha256([string]$Path) {
+                     return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+                   }
+                   function Install-VerifiedArchive([string]$Uri, [string]$ArchivePath, [string]$ExpectedSha256, [string]$Destination) {
+                     Remove-Item -LiteralPath $ArchivePath -Force -ErrorAction SilentlyContinue
+                     Remove-Item -LiteralPath $Destination -Recurse -Force -ErrorAction SilentlyContinue
+                     Invoke-WebRequest -UseBasicParsing -Uri $Uri -OutFile $ArchivePath
+                     if ((Get-Sha256 $ArchivePath) -ne $ExpectedSha256) { throw "SHA-256 verification failed for $Uri." }
+                     Expand-Archive -LiteralPath $ArchivePath -DestinationPath $toolchainRoot -Force
+                     if (-not (Test-Path -LiteralPath $Destination -PathType Container)) { throw "Verified archive did not contain expected directory $Destination." }
+                   }
+                   function Invoke-CheckedProcess([string]$FilePath, [string[]]$ArgumentList, [int]$TimeoutSeconds) {
+                     $process = Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -NoNewWindow -PassThru
+                     if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+                       & taskkill.exe /PID $process.Id /T /F | Out-Null
+                       throw "Timed out after $TimeoutSeconds seconds: $FilePath $($ArgumentList -join ' ')"
+                     }
+                     if ($process.ExitCode -ne 0) { throw "Command failed with exit code $($process.ExitCode): $FilePath $($ArgumentList -join ' ')" }
+                   }
+
+                   New-Item -ItemType Directory -Force -Path $toolchainRoot | Out-Null
+                   Install-VerifiedArchive "https://nodejs.org/dist/v$nodeVersion/$nodeArchive" $nodeArchivePath $nodeSha256 $nodeRoot
+                   Install-VerifiedArchive "https://ziglang.org/download/$zigVersion/$zigArchive" $zigArchivePath $zigSha256 $zigRoot
+                   $env:Path = "$nodeRoot;$zigRoot;$env:Path"
+                   if ((& "$nodeRoot\node.exe" --version) -ne "v$nodeVersion") { throw 'Pinned Node runtime version check failed.' }
+                   if ((& "$zigRoot\zig.exe" version) -ne $zigVersion) { throw 'Pinned Zig runtime version check failed.' }
+
+                   # This scoped PATH deliberately follows the Zig 0.14.1 native-library validation above.
+                   Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:check') $commandTimeoutSeconds
+                   Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:verify-package:windows') $commandTimeoutSeconds
+
+                   if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) { throw 'Vercel Native did not produce the expected fresh Windows directory package.' }
+                   if (-not (Test-Path -LiteralPath $evidenceSource -PathType Leaf)) { throw 'Vercel Native readiness evidence is missing.' }
+                   $evidence = Get-Content -LiteralPath $evidenceSource -Raw | ConvertFrom-Json
+                   if ($evidence.result -ne 'passed' -or -not $evidence.readiness.ready -or -not $evidence.readiness.responsive -or $evidence.readiness.title -ne 'Creature OS - Go Agent' -or -not $evidence.cleanup.completed) {
+                     throw 'Vercel Native package evidence did not prove responsive exact-title window readiness and cleanup.'
+                   }
+
+                   Remove-Item -LiteralPath $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
+                   New-Item -ItemType Directory -Force -Path "$artifactRoot\package", "$artifactRoot\evidence" | Out-Null
+                   Copy-Item -LiteralPath $packageRoot -Destination "$artifactRoot\package" -Recurse -Force
+                   Copy-Item -LiteralPath $evidenceSource -Destination "$artifactRoot\evidence\windows-package-verify.json" -Force
+                   $manifest = Get-ChildItem -LiteralPath $artifactRoot -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName | ForEach-Object {
+                     "$(Get-Sha256 $_.FullName)  $($_.FullName.Substring((Resolve-Path -LiteralPath $artifactRoot).Path.Length + 1).Replace('\', '/'))"
+                   }
+                   if (-not $manifest) { throw 'No Vercel Native package or evidence files were retained.' }
+                   [System.IO.File]::WriteAllLines((Join-Path $artifactRoot 'SHA256SUMS.txt'), [string[]]$manifest, (New-Object System.Text.UTF8Encoding($false)))
+      - when:
+          condition:
             not:
               equal: [windows, << parameters.platform >>]
           steps:
