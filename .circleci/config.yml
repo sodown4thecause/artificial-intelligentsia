@@ -250,6 +250,7 @@ jobs:
                        throw "Timed out after $TimeoutSeconds seconds: $FilePath $($ArgumentList -join ' ')"
                      }
                      $process.Refresh()
+                     if ($null -eq $process.ExitCode) { throw "Command exited without an exit code: $FilePath $($ArgumentList -join ' ')" }
                      if ($process.ExitCode -ne 0) { throw "Command failed with exit code $($process.ExitCode): $FilePath $($ArgumentList -join ' ')" }
                    }
 
@@ -261,9 +262,13 @@ jobs:
                    if ((& "$zigRoot\zig.exe" version) -ne $zigVersion) { throw 'Pinned Zig runtime version check failed.' }
 
                    # This scoped PATH deliberately follows the Zig 0.14.1 native-library validation above.
-                   Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:check') $commandTimeoutSeconds
+                   $npmCli = Join-Path $nodeRoot 'node_modules\npm\bin\npm-cli.js'
+                   if (-not (Test-Path -LiteralPath $npmCli -PathType Leaf)) {
+                     throw "Pinned npm CLI was not found at $npmCli."
+                   }
+                   Invoke-CheckedProcess "$nodeRoot\node.exe" @($npmCli, 'run', 'desktop:check') $commandTimeoutSeconds
                    try {
-                     Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:verify-package:windows') $commandTimeoutSeconds
+                     Invoke-CheckedProcess "$nodeRoot\node.exe" @($npmCli, 'run', 'desktop:verify-package:windows') $commandTimeoutSeconds
 
                      if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) { throw 'Vercel Native did not produce the expected fresh Windows directory package.' }
                      if (-not (Test-Path -LiteralPath $evidenceSource -PathType Leaf)) { throw 'Vercel Native readiness evidence is missing.' }
