@@ -13,7 +13,7 @@
         .windows = .{
             .{
                 .label = "main",
-                .title = "Creature OS — Go Agent",
+                .title = "Creature OS - Go Agent",
                 .width = 960,
                 .height = 640,
                 .restore_state = false,

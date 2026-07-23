@@ -11,6 +11,7 @@ import {
   runPackageLaunchSmoke,
   verifyWindowsPackage,
   WINDOWS_PACKAGE_DIRECTORY,
+  WINDOWS_PACKAGE_WINDOW_TITLE,
   type RunningProcess,
   type WindowReadiness,
 } from "../../scripts/desktop-package-smoke.js";
@@ -57,7 +58,7 @@ const readyWindow: WindowReadiness = {
   ready: true,
   responsive: true,
   handle: "1234",
-  title: "Creature OS - Go Agent",
+  title: WINDOWS_PACKAGE_WINDOW_TITLE,
   method: "test",
 };
 
@@ -110,6 +111,15 @@ describe("Native SDK provenance", () => {
   it("parses an observed version but rejects ambiguous CLI output", () => {
     assert.equal(parseNativeSdkVersion("native 0.5.3"), "0.5.3");
     assert.throws(() => parseNativeSdkVersion("0.5.4 (node 22.0.0)"), /exactly one/);
+  });
+});
+
+describe("Windows window-title contract", () => {
+  it("keeps the native manifest title aligned with the smoke readiness title", async () => {
+    const manifest = await readFile(path.join(DESKTOP_NATIVE_ROOT, "app.zon"), "utf8");
+    const title = manifest.match(/\.windows\s*=\s*\.\{\s*\.\{\s*\.label\s*=\s*"main",\s*\.title\s*=\s*"([^"]+)"/s);
+    assert.ok(title, "app.zon must configure the main Windows shell title");
+    assert.equal(title[1], WINDOWS_PACKAGE_WINDOW_TITLE);
   });
 });
 
@@ -175,39 +185,46 @@ describe("verifyWindowsPackage", () => {
     await rm(WINDOWS_PACKAGE_DIRECTORY, { recursive: true, force: true });
   });
 
-  async function packageWith(commandResults: readonly { readonly stdout: string; readonly stderr: string }[]): Promise<{ commands: string[][]; evidencePath: string }> {
+  async function packageWith(commandResults: readonly { readonly stdout: string; readonly stderr: string }[]): Promise<{ commands: string[][]; evidencePath: string; npmCliPath: string }> {
     const directory = await temporaryPackage();
     const evidencePath = path.join(directory, "evidence.json");
+    const npmCliPath = path.join(directory, "npm-cli.js");
     const commands: string[][] = [];
     let index = 0;
-    await verifyWindowsPackage({
-      evidencePath,
-      runCommand: async (_command, args) => {
-        commands.push([...args]);
-        const result = commandResults[index++];
-        if (args.includes("package")) await createExactExecutable(WINDOWS_PACKAGE_DIRECTORY);
-        return result;
-      },
-      launch: () => new FakeProcess(),
-      queryWindow: async () => readyWindow,
-      killProcessTree: async () => undefined,
-    });
-    return { commands, evidencePath };
+    const originalNpmExecpath = process.env.npm_execpath;
+    process.env.npm_execpath = npmCliPath;
+    try {
+      await verifyWindowsPackage({
+        evidencePath,
+        runCommand: async (_command, args) => {
+          commands.push([...args]);
+          const result = commandResults[index++];
+          if (args.includes("package")) await createExactExecutable(WINDOWS_PACKAGE_DIRECTORY);
+          return result;
+        },
+        launch: () => new FakeProcess(),
+        queryWindow: async () => readyWindow,
+        killProcessTree: async () => undefined,
+      });
+      return { commands, evidencePath, npmCliPath };
+    } finally {
+      if (originalNpmExecpath === undefined) delete process.env.npm_execpath;
+      else process.env.npm_execpath = originalNpmExecpath;
+    }
   }
 
   it("uses the authoritative output path and command order without deleting an arbitrary sibling", async () => {
     const unrelated = await temporaryPackage();
     const sentinel = path.join(unrelated, "keep.txt");
     await writeFile(sentinel, "keep");
-    const { commands } = await packageWith([{ stdout: "native 0.5.4", stderr: "" }, { stdout: "", stderr: "" }, { stdout: "", stderr: "" }]);
+    const { commands, npmCliPath } = await packageWith([{ stdout: "native 0.5.4", stderr: "" }, { stdout: "", stderr: "" }, { stdout: "", stderr: "" }]);
     assert.equal(path.dirname(WINDOWS_PACKAGE_DIRECTORY), path.join(DESKTOP_NATIVE_ROOT, "package"));
     assert.equal(await readFile(sentinel, "utf8"), "keep");
-    assert.deepEqual(commands.map((args) => args.slice(-3)), [
-      ["--", "native", "--version"],
-      ["--", "native", "build"],
-      ["package/windows", "--binary", "zig-out/bin/creature-os-go-agent.exe"],
+    assert.deepEqual(commands, [
+      [npmCliPath, "exec", "--no", "--", "native", "--version"],
+      [npmCliPath, "exec", "--no", "--", "native", "build"],
+      [npmCliPath, "exec", "--no", "--", "native", "package", "--target", "windows", "--output", "package/windows", "--binary", "zig-out/bin/creature-os-go-agent.exe"],
     ]);
-    assert.match(commands[2].join(" "), /--output package\/windows/);
   });
 
   it("preserves detailed launch evidence instead of replacing it", async () => {
