@@ -259,7 +259,7 @@ jobs:
                      $process.Refresh()
                      $exitCode = $process.ExitCode
                      if ($null -eq $exitCode) { throw "Command exited without an exit code: $FilePath $($ArgumentList -join ' ')" }
-                     if ($exitCode -ne 0) { throw "Command failed with exit code $exitCode: $FilePath $($ArgumentList -join ' ')" }
+                     if ($exitCode -ne 0) { throw "Command failed with exit code ${exitCode}: $FilePath $($ArgumentList -join ' ')" }
                    }
 
                    New-Item -ItemType Directory -Force -Path $toolchainRoot | Out-Null
