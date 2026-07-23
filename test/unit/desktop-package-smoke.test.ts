@@ -1,91 +1,167 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { afterEach, describe, it } from "node:test";
+import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import test from "node:test";
 import {
   findPackagedExecutable,
-  LaunchSmokeError,
+  parseNativeSdkVersion,
   runPackageLaunchSmoke,
-  WINDOWS_PACKAGE_EXECUTABLE,
   type RunningProcess,
+  type WindowReadiness,
 } from "../../scripts/desktop-package-smoke.js";
 
-class EarlyExitProcess implements RunningProcess {
-  readonly exitCode = 1;
+const temporaryDirectories: string[] = [];
 
-  once(event: "error" | "exit", listener: (...args: readonly unknown[]) => void): unknown {
-    if (event === "exit") listener(1);
-    return this;
-  }
-
-  kill(): boolean {
-    return true;
-  }
+async function temporaryPackage(): Promise<string> {
+  const directory = await mkdtemp(path.join(tmpdir(), "creature-package-"));
+  temporaryDirectories.push(directory);
+  return directory;
 }
 
-class AliveProcess implements RunningProcess {
+async function createExactExecutable(directory: string, content = "binary"): Promise<string> {
+  const executable = path.join(directory, "bin", "creature-os-go-agent.exe");
+  await mkdir(path.dirname(executable), { recursive: true });
+  await writeFile(executable, content);
+  return executable;
+}
+
+class FakeProcess implements RunningProcess {
+  readonly pid = 4242;
   exitCode: number | null = null;
-  private exitListener: ((...args: readonly unknown[]) => void) | undefined;
+  private readonly exitListeners: Array<(...args: readonly unknown[]) => void> = [];
+  private readonly errorListeners: Array<(...args: readonly unknown[]) => void> = [];
 
-  once(event: "error" | "exit", listener: (...args: readonly unknown[]) => void): unknown {
-    if (event === "exit") this.exitListener = listener;
+  once(event: "error" | "exit", listener: (...args: readonly unknown[]) => void): this {
+    (event === "exit" ? this.exitListeners : this.errorListeners).push(listener);
     return this;
   }
 
   kill(): boolean {
-    this.exitCode = 0;
-    this.exitListener?.(0);
+    this.exit(0);
     return true;
+  }
+
+  exit(code: number): void {
+    if (this.exitCode !== null) return;
+    this.exitCode = code;
+    for (const listener of this.exitListeners) listener(code);
   }
 }
 
-test("desktop package discovery rejects a missing directory package", async () => {
-  await assert.rejects(
-    findPackagedExecutable(path.join(tmpdir(), "creature-os-no-package")),
-    /Windows directory package is missing/,
-  );
+const readyWindow: WindowReadiness = {
+  ready: true,
+  responsive: true,
+  handle: "1234",
+  title: "Creature OS - Go Agent",
+  method: "test",
+};
+
+afterEach(async () => {
+  await Promise.all(temporaryDirectories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
 });
 
-test("desktop launch smoke records and rejects an early executable exit", async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "desktop-smoke-"));
-  const evidencePath = path.join(directory, "evidence.json");
-  await assert.rejects(
-    runPackageLaunchSmoke({
-      executablePath: path.join(directory, "creature-os.exe"),
-      evidencePath,
-      minimumAliveMs: 1,
-      launch: () => new EarlyExitProcess(),
-    }),
-    (error: unknown) => error instanceof LaunchSmokeError && error.evidence.result === "failed",
-  );
-  const evidence = JSON.parse(readFileSync(evidencePath, "utf8")) as { result: string; failure: string };
-  assert.equal(evidence.result, "failed");
-  assert.match(evidence.failure, /exited before/);
-});
-
-test("desktop package discovery accepts the Creature OS executable", async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "desktop-package-"));
-  const executable = path.join(directory, WINDOWS_PACKAGE_EXECUTABLE);
-  writeFileSync(executable, "fixture");
-  assert.equal(await findPackagedExecutable(directory), executable);
-});
-
-test("desktop package discovery rejects an unexpected executable even when it is alone", async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "desktop-package-"));
-  writeFileSync(path.join(directory, "other.exe"), "fixture");
-  await assert.rejects(findPackagedExecutable(directory), new RegExp(WINDOWS_PACKAGE_EXECUTABLE));
-});
-
-test("desktop launch smoke requires lifetime, terminates, and writes passing evidence", async () => {
-  const directory = mkdtempSync(path.join(tmpdir(), "desktop-smoke-"));
-  const evidencePath = path.join(directory, "evidence.json");
-  const evidence = await runPackageLaunchSmoke({
-    executablePath: path.join(directory, WINDOWS_PACKAGE_EXECUTABLE),
-    evidencePath,
-    minimumAliveMs: 1,
-    launch: () => new AliveProcess(),
+describe("findPackagedExecutable", () => {
+  it("requires the exact nonempty bin executable", async () => {
+    const directory = await temporaryPackage();
+    const expected = await createExactExecutable(directory);
+    assert.equal(await findPackagedExecutable(directory), await realpath(expected));
   });
-  assert.equal(evidence.result, "passed");
-  assert.equal(JSON.parse(readFileSync(evidencePath, "utf8")).result, "passed");
+
+  it("rejects a missing exact package even when a stale nested basename exists", async () => {
+    const directory = await temporaryPackage();
+    await mkdir(path.join(directory, "stale", "bin"), { recursive: true });
+    await writeFile(path.join(directory, "stale", "bin", "creature-os-go-agent.exe"), "stale");
+    await assert.rejects(findPackagedExecutable(directory), /Expected exact Windows package executable/);
+  });
+
+  it("rejects an empty file and a non-file exact path", async () => {
+    const empty = await temporaryPackage();
+    await createExactExecutable(empty, "");
+    await assert.rejects(findPackagedExecutable(empty), /nonempty regular executable/);
+    const directory = await temporaryPackage();
+    await mkdir(path.join(directory, "bin", "creature-os-go-agent.exe"), { recursive: true });
+    await assert.rejects(findPackagedExecutable(directory), /nonempty regular executable/);
+  });
+
+  it("rejects a symlink exact executable when symlinks are available", async () => {
+    const directory = await temporaryPackage();
+    const outside = await temporaryPackage();
+    const target = await createExactExecutable(outside);
+    await mkdir(path.join(directory, "bin"), { recursive: true });
+    try {
+      await symlink(target, path.join(directory, "bin", "creature-os-go-agent.exe"));
+    } catch {
+      return;
+    }
+    await assert.rejects(findPackagedExecutable(directory), /must not be a symlink/);
+  });
+});
+
+describe("Native SDK provenance", () => {
+  it("accepts the sole required observed version", () => {
+    assert.equal(parseNativeSdkVersion("native 0.5.4\n"), "0.5.4");
+  });
+
+  it("fails closed for a wrong or ambiguous CLI version", () => {
+    assert.throws(() => parseNativeSdkVersion("native 0.5.3"), /Expected local Vercel Native SDK/);
+    assert.throws(() => parseNativeSdkVersion("0.5.4 (node 22.0.0)"), /exactly one/);
+  });
+});
+
+describe("runPackageLaunchSmoke", () => {
+  it("records readiness only after a responsive Creature OS - Go Agent window appears", async () => {
+    const directory = await temporaryPackage();
+    const evidence = await runPackageLaunchSmoke({
+      executablePath: await createExactExecutable(directory),
+      evidencePath: path.join(directory, "evidence.json"),
+      launch: () => new FakeProcess(),
+      queryWindow: async () => readyWindow,
+      cleanupTimeoutMs: 10,
+    });
+    assert.equal(evidence.result, "passed");
+    assert.equal(evidence.readiness?.handle, "1234");
+    assert.equal(evidence.cleanup?.completed, true);
+  });
+
+  it("fails a long-lived process that never exposes a window", async () => {
+    const directory = await temporaryPackage();
+    await assert.rejects(runPackageLaunchSmoke({
+      executablePath: await createExactExecutable(directory),
+      evidencePath: path.join(directory, "evidence.json"),
+      launch: () => new FakeProcess(),
+      queryWindow: async () => ({ ...readyWindow, ready: false, responsive: false, handle: null, title: null }),
+      readinessTimeoutMs: 10,
+      cleanupTimeoutMs: 10,
+    }), /did not expose a responsive Creature OS - Go Agent/);
+  });
+
+  it("fails an early process exit", async () => {
+    const directory = await temporaryPackage();
+    const process = new FakeProcess();
+    process.exit(1);
+    await assert.rejects(runPackageLaunchSmoke({
+      executablePath: await createExactExecutable(directory),
+      evidencePath: path.join(directory, "evidence.json"),
+      launch: () => process,
+      queryWindow: async () => readyWindow,
+      cleanupTimeoutMs: 10,
+    }), /exited before/);
+  });
+
+  it("escalates to a bounded process-tree kill when graceful exit times out", async () => {
+    const directory = await temporaryPackage();
+    const process = new FakeProcess();
+    process.kill = () => true;
+    const evidence = await runPackageLaunchSmoke({
+      executablePath: await createExactExecutable(directory),
+      evidencePath: path.join(directory, "evidence.json"),
+      launch: () => process,
+      queryWindow: async () => readyWindow,
+      killProcessTree: async () => { process.exit(0); },
+      cleanupTimeoutMs: 10,
+    });
+    assert.equal(evidence.cleanup?.forcedTreeKillAttempted, true);
+    assert.equal(evidence.cleanup?.completed, true);
+  });
 });

@@ -1,16 +1,42 @@
-import { readdir, mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
+import { createHash, randomUUID } from "node:crypto";
 import { spawn } from "node:child_process";
+import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const NATIVE_SDK_VERSION = "0.5.4";
 export const WINDOWS_TARGET = "windows";
 export const WINDOWS_PACKAGE_EXECUTABLE = "creature-os-go-agent.exe";
+export const WINDOWS_PACKAGE_EXECUTABLE_RELATIVE_PATH = path.join("bin", WINDOWS_PACKAGE_EXECUTABLE);
+export const WINDOWS_PACKAGE_WINDOW_TITLE = "Creature OS - Go Agent";
+
+export interface WindowReadiness {
+  readonly ready: boolean;
+  readonly handle: string | null;
+  readonly title: string | null;
+  readonly responsive: boolean;
+  readonly method: string;
+}
+
+export interface CleanupEvidence {
+  readonly gracefulAttempted: boolean;
+  readonly forcedTreeKillAttempted: boolean;
+  readonly completed: boolean;
+  readonly failure: string | null;
+}
 
 export interface LaunchEvidence {
   readonly sdkVersion: string;
+  readonly sdkVersionOutput: string;
   readonly target: string;
+  readonly packageDirectory: string | null;
+  readonly packageCreatedAt: string | null;
+  readonly runId: string;
   readonly executablePath: string | null;
+  readonly executableSha256: string | null;
+  readonly readiness: WindowReadiness | null;
+  readonly readinessElapsedMs: number | null;
+  readonly cleanup: CleanupEvidence | null;
   readonly startedAt: string;
   readonly finishedAt: string;
   readonly durationMs: number;
@@ -19,12 +45,15 @@ export interface LaunchEvidence {
 }
 
 export interface RunningProcess {
+  readonly pid?: number;
   readonly exitCode: number | null;
   once(event: "error" | "exit", listener: (...args: readonly unknown[]) => void): unknown;
-  kill(): boolean;
+  kill(signal?: NodeJS.Signals | number): boolean;
 }
 
 export type ProcessLauncher = (executablePath: string) => RunningProcess;
+export type WindowQuery = (pid: number) => Promise<WindowReadiness>;
+export type ProcessTreeKiller = (pid: number) => Promise<void>;
 
 export class LaunchSmokeError extends Error {
   constructor(readonly evidence: LaunchEvidence) {
@@ -32,49 +61,153 @@ export class LaunchSmokeError extends Error {
   }
 }
 
-async function collectExecutables(directory: string): Promise<string[]> {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const nested = await Promise.all(entries.map(async (entry) => {
-    const entryPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return collectExecutables(entryPath);
-    return entry.isFile() && entry.name.toLowerCase().endsWith(".exe") ? [entryPath] : [];
-  }));
-  return nested.flat();
+function isWithin(parent: string, child: string): boolean {
+  const relative = path.relative(parent, child);
+  return relative !== "" && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
+/**
+ * Resolves the sole supported directory-package layout. Deliberately do not
+ * search descendants: a stale or nested executable is not build evidence.
+ */
 export async function findPackagedExecutable(packageDirectory: string): Promise<string> {
-  let executables: string[];
+  const requestedRoot = path.resolve(packageDirectory);
+  let rootLink;
   try {
-    executables = await collectExecutables(packageDirectory);
+    rootLink = await lstat(requestedRoot);
   } catch {
-    throw new Error(`Windows directory package is missing at ${packageDirectory}. Run npm run desktop:package:windows first.`);
+    throw new Error(`Windows directory package is missing at ${requestedRoot}. Run the atomic verification command first.`);
+  }
+  if (rootLink.isSymbolicLink()) throw new Error(`Windows package directory must not be a symlink: ${requestedRoot}`);
+
+  const packageRoot = await realpath(requestedRoot);
+  const requestedExecutable = path.resolve(packageRoot, WINDOWS_PACKAGE_EXECUTABLE_RELATIVE_PATH);
+  if (!isWithin(packageRoot, requestedExecutable)) throw new Error("Windows package executable escaped its package root.");
+
+  let entry;
+  let executableStats;
+  try {
+    entry = await lstat(requestedExecutable);
+    executableStats = await stat(requestedExecutable);
+  } catch {
+    throw new Error(`Expected exact Windows package executable at ${requestedExecutable}.`);
+  }
+  if (entry.isSymbolicLink()) throw new Error(`Windows package executable must not be a symlink or reparse point: ${requestedExecutable}`);
+  if (!executableStats.isFile() || executableStats.size === 0) {
+    throw new Error(`Expected a nonempty regular executable file at ${requestedExecutable}.`);
   }
 
-  const creatureExecutable = executables.filter(
-    (candidate) => path.basename(candidate).toLowerCase() === WINDOWS_PACKAGE_EXECUTABLE,
-  );
-  if (creatureExecutable.length === 1) return path.resolve(creatureExecutable[0]);
-  if (creatureExecutable.length === 0) {
-    throw new Error(`Expected ${WINDOWS_PACKAGE_EXECUTABLE} under ${packageDirectory}; found: ${executables.join(", ") || "none"}`);
+  const resolvedExecutable = await realpath(requestedExecutable);
+  if (!isWithin(packageRoot, resolvedExecutable)) {
+    throw new Error(`Windows package executable resolves outside its package root: ${requestedExecutable}`);
   }
-  throw new Error(`Expected exactly one ${WINDOWS_PACKAGE_EXECUTABLE} under ${packageDirectory}; found: ${creatureExecutable.join(", ")}`);
+  return resolvedExecutable;
+}
+
+export function parseNativeSdkVersion(output: string): string {
+  const versions = [...output.matchAll(/(?:^|[^0-9])(\d+\.\d+\.\d+)(?![0-9])/g)].map((match) => match[1]);
+  if (versions.length !== 1) throw new Error("Could not determine exactly one Vercel Native SDK version from the local CLI output.");
+  if (versions[0] !== NATIVE_SDK_VERSION) {
+    throw new Error(`Expected local Vercel Native SDK ${NATIVE_SDK_VERSION}; observed ${versions[0]}.`);
+  }
+  return versions[0];
+}
+
+export async function sha256File(filePath: string): Promise<string> {
+  return createHash("sha256").update(await readFile(filePath)).digest("hex");
 }
 
 function defaultLauncher(executablePath: string): RunningProcess {
-  return spawn(executablePath, [], { detached: false, stdio: "ignore", windowsHide: true });
+  return spawn(executablePath, [], { detached: false, stdio: "ignore" });
 }
 
-function waitForMinimumLifetime(process: RunningProcess, minimumAliveMs: number): Promise<void> {
-  return new Promise((resolve, reject) => {
-    process.once("error", (error) => reject(error instanceof Error ? error : new Error("Packaged executable could not start.")));
-    process.once("exit", (code) => reject(new Error(`Packaged executable exited before ${minimumAliveMs}ms (exit code ${String(code)}).`)));
-    setTimeout(resolve, minimumAliveMs);
+function waitForExit(process: RunningProcess, timeoutMs: number): Promise<boolean> {
+  if (process.exitCode !== null) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), timeoutMs);
+    process.once("exit", () => {
+      clearTimeout(timer);
+      resolve(true);
+    });
   });
 }
 
-function waitForExit(process: RunningProcess): Promise<void> {
-  if (process.exitCode !== null) return Promise.resolve();
-  return new Promise((resolve) => process.once("exit", () => resolve()));
+async function defaultWindowQuery(pid: number): Promise<WindowReadiness> {
+  const script = [
+    "$ErrorActionPreference = 'Stop'",
+    "Add-Type -Namespace Native -Name User32 -MemberDefinition '[DllImport(\"user32.dll\", SetLastError=true)] public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);'",
+    `$p = Get-Process -Id ${pid} -ErrorAction Stop`,
+    "$handle = $p.MainWindowHandle",
+    "$responsive = $false",
+    "if ($handle -ne 0) { $result = [UIntPtr]::Zero; $responsive = [Native.User32]::SendMessageTimeout($handle, 0, [UIntPtr]::Zero, [IntPtr]::Zero, 2, 500, [ref]$result) -ne [IntPtr]::Zero }",
+    "[pscustomobject]@{ ready = ($handle -ne 0 -and $responsive); handle = if ($handle -ne 0) { $handle.ToString() } else { $null }; title = $p.MainWindowTitle; responsive = $responsive; method = 'PowerShell Get-Process MainWindowHandle + user32 SendMessageTimeout' } | ConvertTo-Json -Compress",
+  ].join("; ");
+  return new Promise((resolve, reject) => {
+    const query = spawn("powershell.exe", ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script], { windowsHide: true });
+    let output = "";
+    let errorOutput = "";
+    query.stdout?.on("data", (chunk: Buffer) => { output += chunk.toString(); });
+    query.stderr?.on("data", (chunk: Buffer) => { errorOutput += chunk.toString(); });
+    const timer = setTimeout(() => {
+      query.kill();
+      reject(new Error("Timed out querying packaged window readiness."));
+    }, 2_000);
+    query.once("error", (error) => { clearTimeout(timer); reject(error); });
+    query.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return reject(new Error(`Window readiness query failed: ${errorOutput.trim() || String(code)}`));
+      try {
+        resolve(JSON.parse(output) as WindowReadiness);
+      } catch {
+        reject(new Error("Window readiness query returned invalid data."));
+      }
+    });
+  });
+}
+
+async function defaultProcessTreeKiller(pid: number): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const taskkill = spawn("taskkill.exe", ["/PID", String(pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" });
+    const timer = setTimeout(() => { taskkill.kill(); reject(new Error("Timed out forcing the packaged process tree to exit.")); }, 5_000);
+    taskkill.once("error", (error) => { clearTimeout(timer); reject(error); });
+    taskkill.once("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0 || code === 128) resolve(); else reject(new Error(`taskkill exited with code ${String(code)}.`));
+    });
+  });
+}
+
+async function waitForReadyWindow(process: RunningProcess, queryWindow: WindowQuery, timeoutMs: number): Promise<{ readiness: WindowReadiness; elapsedMs: number }> {
+  if (!process.pid) throw new Error("Packaged executable did not expose a process id.");
+  const started = Date.now();
+  let lastReadiness: WindowReadiness | null = null;
+  while (Date.now() - started < timeoutMs) {
+    if (process.exitCode !== null) throw new Error(`Packaged executable exited before a responsive top-level window was ready (exit code ${String(process.exitCode)}).`);
+    lastReadiness = await queryWindow(process.pid);
+    if (lastReadiness.ready && lastReadiness.responsive && lastReadiness.handle && lastReadiness.title === WINDOWS_PACKAGE_WINDOW_TITLE) {
+      return { readiness: lastReadiness, elapsedMs: Date.now() - started };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`Packaged executable did not expose a responsive ${WINDOWS_PACKAGE_WINDOW_TITLE} top-level window within ${timeoutMs}ms${lastReadiness?.title ? ` (last title: ${lastReadiness.title})` : ""}.`);
+}
+
+async function cleanupProcess(process: RunningProcess, killTree: ProcessTreeKiller, timeoutMs: number): Promise<CleanupEvidence> {
+  let gracefulAttempted = false;
+  let forcedTreeKillAttempted = false;
+  try {
+    if (process.exitCode !== null) return { gracefulAttempted, forcedTreeKillAttempted, completed: true, failure: null };
+    gracefulAttempted = true;
+    process.kill("SIGTERM");
+    if (await waitForExit(process, timeoutMs)) return { gracefulAttempted, forcedTreeKillAttempted, completed: true, failure: null };
+    if (!process.pid) throw new Error("Cannot force-kill a packaged process without a process id.");
+    forcedTreeKillAttempted = true;
+    await killTree(process.pid);
+    if (await waitForExit(process, timeoutMs)) return { gracefulAttempted, forcedTreeKillAttempted, completed: true, failure: null };
+    throw new Error("Packaged process tree did not exit after forced termination.");
+  } catch (error) {
+    return { gracefulAttempted, forcedTreeKillAttempted, completed: false, failure: error instanceof Error ? error.message : String(error) };
+  }
 }
 
 async function writeEvidence(evidencePath: string, evidence: LaunchEvidence): Promise<void> {
@@ -85,52 +218,147 @@ async function writeEvidence(evidencePath: string, evidence: LaunchEvidence): Pr
 export async function runPackageLaunchSmoke(options: {
   readonly executablePath: string;
   readonly evidencePath: string;
-  readonly minimumAliveMs?: number;
+  readonly sdkVersion?: string;
+  readonly sdkVersionOutput?: string;
+  readonly packageDirectory?: string;
+  readonly packageCreatedAt?: string;
+  readonly executableSha256?: string;
   readonly launch?: ProcessLauncher;
+  readonly queryWindow?: WindowQuery;
+  readonly killProcessTree?: ProcessTreeKiller;
+  readonly readinessTimeoutMs?: number;
+  readonly cleanupTimeoutMs?: number;
 }): Promise<LaunchEvidence> {
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
-  const minimumAliveMs = options.minimumAliveMs ?? 2_000;
+  let process: RunningProcess | undefined;
+  let readiness: WindowReadiness | null = null;
+  let readinessElapsedMs: number | null = null;
+  let cleanup: CleanupEvidence | null = null;
+  let failure: string | null = null;
   try {
-    const process = (options.launch ?? defaultLauncher)(options.executablePath);
-    await waitForMinimumLifetime(process, minimumAliveMs);
-    if (!process.kill()) throw new Error("Packaged executable could not be terminated cleanly.");
-    await waitForExit(process);
-    const finished = Date.now();
-    const evidence: LaunchEvidence = {
-      sdkVersion: NATIVE_SDK_VERSION,
-      target: WINDOWS_TARGET,
-      executablePath: path.resolve(options.executablePath),
-      startedAt,
-      finishedAt: new Date(finished).toISOString(),
-      durationMs: finished - started,
-      result: "passed",
-      failure: null,
-    };
-    await writeEvidence(options.evidencePath, evidence);
-    return evidence;
+    process = (options.launch ?? defaultLauncher)(options.executablePath);
+    const window = await waitForReadyWindow(process, options.queryWindow ?? defaultWindowQuery, options.readinessTimeoutMs ?? 10_000);
+    readiness = window.readiness;
+    readinessElapsedMs = window.elapsedMs;
   } catch (error) {
-    const finished = Date.now();
+    failure = error instanceof Error ? error.message : String(error);
+  } finally {
+    if (process) {
+      cleanup = await cleanupProcess(process, options.killProcessTree ?? defaultProcessTreeKiller, options.cleanupTimeoutMs ?? 3_000);
+      if (!cleanup.completed && !failure) failure = `Packaged process cleanup failed: ${cleanup.failure}`;
+    }
+  }
+  const finished = Date.now();
+  const evidence: LaunchEvidence = {
+    sdkVersion: options.sdkVersion ?? NATIVE_SDK_VERSION,
+    sdkVersionOutput: options.sdkVersionOutput ?? "not observed by standalone smoke",
+    target: WINDOWS_TARGET,
+    packageDirectory: options.packageDirectory ? path.resolve(options.packageDirectory) : null,
+    packageCreatedAt: options.packageCreatedAt ?? null,
+    runId: randomUUID(),
+    executablePath: path.resolve(options.executablePath),
+    executableSha256: options.executableSha256 ?? null,
+    readiness,
+    readinessElapsedMs,
+    cleanup,
+    startedAt,
+    finishedAt: new Date(finished).toISOString(),
+    durationMs: finished - started,
+    result: failure ? "failed" : "passed",
+    failure,
+  };
+  try {
+    await writeEvidence(options.evidencePath, evidence);
+  } catch (error) {
+    const writeFailure = error instanceof Error ? error.message : String(error);
+    throw new LaunchSmokeError({ ...evidence, result: "failed", failure: `Failed to write launch evidence: ${writeFailure}` });
+  }
+  if (failure) throw new LaunchSmokeError(evidence);
+  return evidence;
+}
+
+export interface CommandResult { readonly stdout: string; readonly stderr: string; }
+export type CommandRunner = (command: string, args: readonly string[], cwd: string) => Promise<CommandResult>;
+
+function defaultCommandRunner(command: string, args: readonly string[], cwd: string): Promise<CommandResult> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, [...args], { cwd, windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk: Buffer) => { stderr += chunk.toString(); });
+    child.once("error", reject);
+    child.once("exit", (code) => code === 0 ? resolve({ stdout, stderr }) : reject(new Error(`${command} ${args.join(" ")} failed (${String(code)}): ${stderr.trim()}`)));
+  });
+}
+
+/** Cleans, packages, verifies, and smoke-launches one fresh Windows package. */
+export async function verifyWindowsPackage(options: {
+  readonly packageDirectory?: string;
+  readonly evidencePath?: string;
+  readonly packageRoot?: string;
+  readonly runCommand?: CommandRunner;
+  readonly launch?: ProcessLauncher;
+  readonly queryWindow?: WindowQuery;
+  readonly killProcessTree?: ProcessTreeKiller;
+} = {}): Promise<LaunchEvidence> {
+  const packageRoot = path.resolve(options.packageRoot ?? "apps/desktop-native");
+  const packageDirectory = path.resolve(options.packageDirectory ?? path.join(packageRoot, "package", WINDOWS_TARGET));
+  const evidencePath = path.resolve(options.evidencePath ?? path.join(packageRoot, "evidence", "windows-package-verify.json"));
+  const command = options.runCommand ?? defaultCommandRunner;
+  const started = new Date().toISOString();
+  let sdkOutput = "";
+  try {
+    await rm(packageDirectory, { recursive: true, force: true });
+    await mkdir(packageDirectory, { recursive: true });
+    const npmCli = process.env.npm_execpath ?? path.resolve(process.execPath, "..", "node_modules", "npm", "bin", "npm-cli.js");
+    const version = await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "--version"], packageRoot);
+    sdkOutput = `${version.stdout}${version.stderr}`.trim();
+    const sdkVersion = parseNativeSdkVersion(sdkOutput);
+    await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "build"], packageRoot);
+    await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "package", "--target", WINDOWS_TARGET, "--output", "package/windows", "--binary", "zig-out/bin/creature-os-go-agent.exe"], packageRoot);
+    const executablePath = await findPackagedExecutable(packageDirectory);
+    const executableStats = await stat(executablePath);
+    return await runPackageLaunchSmoke({
+      executablePath,
+      evidencePath,
+      sdkVersion,
+      sdkVersionOutput: sdkOutput,
+      packageDirectory,
+      packageCreatedAt: executableStats.birthtime.toISOString(),
+      executableSha256: await sha256File(executablePath),
+      launch: options.launch,
+      queryWindow: options.queryWindow,
+      killProcessTree: options.killProcessTree,
+    });
+  } catch (error) {
+    const finished = new Date().toISOString();
     const evidence: LaunchEvidence = {
       sdkVersion: NATIVE_SDK_VERSION,
+      sdkVersionOutput: sdkOutput || "local Native CLI version was not observed",
       target: WINDOWS_TARGET,
-      executablePath: path.resolve(options.executablePath),
-      startedAt,
-      finishedAt: new Date(finished).toISOString(),
-      durationMs: finished - started,
+      packageDirectory,
+      packageCreatedAt: null,
+      runId: randomUUID(),
+      executablePath: null,
+      executableSha256: null,
+      readiness: null,
+      readinessElapsedMs: null,
+      cleanup: null,
+      startedAt: started,
+      finishedAt: finished,
+      durationMs: Date.parse(finished) - Date.parse(started),
       result: "failed",
       failure: error instanceof Error ? error.message : String(error),
     };
-    await writeEvidence(options.evidencePath, evidence);
+    await writeEvidence(evidencePath, evidence);
     throw new LaunchSmokeError(evidence);
   }
 }
 
 async function main(): Promise<void> {
-  const packageDirectory = path.resolve(process.env.DESKTOP_PACKAGE_DIR ?? "apps/desktop-native/package/windows");
-  const evidencePath = path.resolve(process.env.DESKTOP_SMOKE_EVIDENCE ?? "apps/desktop-native/evidence/windows-launch-smoke.json");
-  const executablePath = await findPackagedExecutable(packageDirectory);
-  const evidence = await runPackageLaunchSmoke({ executablePath, evidencePath });
+  const evidence = await verifyWindowsPackage();
   console.log(JSON.stringify(evidence));
 }
 

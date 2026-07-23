@@ -17,6 +17,7 @@
     "verify:coverage": "tsx scripts/verify-coverage.ts",
     "native:build": "cd native/zig && zig build",
     "native:test": "cd native/zig && zig build test",
+    "desktop:verify-package:windows": "tsx scripts/desktop-package-smoke.ts",
     "desktop:check": "native check apps/desktop-native",
     "desktop:build": "native build apps/desktop-native",
     "desktop:package:windows": "cd apps/desktop-native && native package --target windows --output package/windows",

@@ -46,3 +46,8 @@ package itself, and an install simply lands the identical content once
 
 Node.js 22.15+ (on the 23 line: 23.5+) on PATH (the TypeScript-to-native
 transpiler runs at build time; your shipped binary carries none of it).
+# Windows packaging evidence
+
+Run `npm run desktop:verify-package:windows` from the repository root for the atomic evidence command. It removes the local Windows directory package, invokes the pinned repository-local Native CLI, verifies the exact generated executable, and performs a noninteractive automated packaged-window readiness smoke.
+
+Its PASS is not an installer, installation, signed package, production-keyring, or human interactive-launch claim.
