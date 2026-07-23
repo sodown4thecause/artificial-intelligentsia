@@ -188,8 +188,14 @@ jobs:
                 name: Build and test native library (windows)
                 shell: powershell.exe
                 command: |
-                  Invoke-WebRequest -UseBasicParsing https://ziglang.org/download/0.14.1/zig-x86_64-windows-0.14.1.zip -OutFile $env:TEMP\zig.zip
-                  Expand-Archive -Path $env:TEMP\zig.zip -DestinationPath $env:TEMP -Force
+                  $zigArchivePath = Join-Path $env:TEMP 'zig-x86_64-windows-0.14.1.zip'
+                  $zigSha256 = '554f5378228923ffd558eac35e21af020c73789d87afeabf4bfd16f2e6feed2c'
+                  Invoke-WebRequest -UseBasicParsing https://ziglang.org/download/0.14.1/zig-x86_64-windows-0.14.1.zip -OutFile $zigArchivePath
+                  $actualZigSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $zigArchivePath).Hash.ToLowerInvariant()
+                  if ($actualZigSha256 -ne $zigSha256) {
+                    throw "Zig 0.14.1 Windows x86_64 SHA-256 mismatch: expected $zigSha256, got $actualZigSha256. Refusing to extract or execute the archive."
+                  }
+                  Expand-Archive -Path $zigArchivePath -DestinationPath $env:TEMP -Force
                   $env:Path = "$env:TEMP\zig-x86_64-windows-0.14.1;$env:Path"
                   npm run native:test
                   npm run native:build
@@ -223,6 +229,7 @@ jobs:
                    $packageRoot = 'apps\desktop-native\package\windows'
                    $evidenceSource = 'apps\desktop-native\evidence\windows-package-verify.json'
                    $artifactRoot = 'artifacts\windows\desktop-native'
+                   $verificationEvidenceArtifactRoot = 'artifacts\windows\desktop-native-verification-evidence'
                    $commandTimeoutSeconds = 900
 
                    function Get-Sha256([string]$Path) {
@@ -254,24 +261,39 @@ jobs:
 
                    # This scoped PATH deliberately follows the Zig 0.14.1 native-library validation above.
                    Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:check') $commandTimeoutSeconds
-                   Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:verify-package:windows') $commandTimeoutSeconds
+                   try {
+                     Invoke-CheckedProcess "$nodeRoot\npm.cmd" @('run', 'desktop:verify-package:windows') $commandTimeoutSeconds
 
-                   if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) { throw 'Vercel Native did not produce the expected fresh Windows directory package.' }
-                   if (-not (Test-Path -LiteralPath $evidenceSource -PathType Leaf)) { throw 'Vercel Native readiness evidence is missing.' }
-                   $evidence = Get-Content -LiteralPath $evidenceSource -Raw | ConvertFrom-Json
-                   if ($evidence.result -ne 'passed' -or -not $evidence.readiness.ready -or -not $evidence.readiness.responsive -or $evidence.readiness.title -ne 'Creature OS - Go Agent' -or -not $evidence.cleanup.completed) {
-                     throw 'Vercel Native package evidence did not prove responsive exact-title window readiness and cleanup.'
-                   }
+                     if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) { throw 'Vercel Native did not produce the expected fresh Windows directory package.' }
+                     if (-not (Test-Path -LiteralPath $evidenceSource -PathType Leaf)) { throw 'Vercel Native readiness evidence is missing.' }
+                     $evidence = Get-Content -LiteralPath $evidenceSource -Raw | ConvertFrom-Json
+                     if ($evidence.result -ne 'passed' -or -not $evidence.readiness.ready -or -not $evidence.readiness.responsive -or $evidence.readiness.title -ne 'Creature OS - Go Agent' -or -not $evidence.cleanup.completed) {
+                       throw 'Vercel Native package evidence did not prove responsive exact-title window readiness and cleanup.'
+                     }
 
-                   Remove-Item -LiteralPath $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
-                   New-Item -ItemType Directory -Force -Path "$artifactRoot\package", "$artifactRoot\evidence" | Out-Null
-                   Copy-Item -LiteralPath $packageRoot -Destination "$artifactRoot\package" -Recurse -Force
-                   Copy-Item -LiteralPath $evidenceSource -Destination "$artifactRoot\evidence\windows-package-verify.json" -Force
-                   $manifest = Get-ChildItem -LiteralPath $artifactRoot -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName | ForEach-Object {
-                     "$(Get-Sha256 $_.FullName)  $($_.FullName.Substring((Resolve-Path -LiteralPath $artifactRoot).Path.Length + 1).Replace('\', '/'))"
+                     Remove-Item -LiteralPath $artifactRoot -Recurse -Force -ErrorAction SilentlyContinue
+                     New-Item -ItemType Directory -Force -Path "$artifactRoot\package", "$artifactRoot\evidence" | Out-Null
+                     Copy-Item -LiteralPath $packageRoot -Destination "$artifactRoot\package" -Recurse -Force
+                     Copy-Item -LiteralPath $evidenceSource -Destination "$artifactRoot\evidence\windows-package-verify.json" -Force
+                     $manifest = Get-ChildItem -LiteralPath $artifactRoot -Recurse -File | Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName | ForEach-Object {
+                       "$(Get-Sha256 $_.FullName)  $($_.FullName.Substring((Resolve-Path -LiteralPath $artifactRoot).Path.Length + 1).Replace('\', '/'))"
+                     }
+                     if (-not $manifest) { throw 'No Vercel Native package or evidence files were retained.' }
+                     [System.IO.File]::WriteAllLines((Join-Path $artifactRoot 'SHA256SUMS.txt'), [string[]]$manifest, (New-Object System.Text.UTF8Encoding($false)))
                    }
-                   if (-not $manifest) { throw 'No Vercel Native package or evidence files were retained.' }
-                   [System.IO.File]::WriteAllLines((Join-Path $artifactRoot 'SHA256SUMS.txt'), [string[]]$manifest, (New-Object System.Text.UTF8Encoding($false)))
+                   finally {
+                     if (Test-Path -LiteralPath $evidenceSource -PathType Leaf) {
+                       New-Item -ItemType Directory -Force -Path $verificationEvidenceArtifactRoot | Out-Null
+                       Copy-Item -LiteralPath $evidenceSource -Destination "$verificationEvidenceArtifactRoot\windows-package-verify.json" -Force
+                     }
+                   }
+      - when:
+          condition:
+            equal: [windows, << parameters.platform >>]
+          steps:
+            - store_artifacts:
+                path: artifacts/windows/desktop-native-verification-evidence
+                destination: windows-package-verification-evidence
       - when:
           condition:
             not:
