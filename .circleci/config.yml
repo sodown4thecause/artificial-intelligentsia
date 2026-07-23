@@ -57,6 +57,7 @@ jobs:
             - scripts
             - docs
             - spec
+            - apps
 
   typecheck:
     executor: node
