@@ -1,12 +1,16 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+  DESKTOP_NATIVE_ROOT,
   findPackagedExecutable,
+  LaunchSmokeError,
   parseNativeSdkVersion,
   runPackageLaunchSmoke,
+  verifyWindowsPackage,
+  WINDOWS_PACKAGE_DIRECTORY,
   type RunningProcess,
   type WindowReadiness,
 } from "../../scripts/desktop-package-smoke.js";
@@ -103,8 +107,8 @@ describe("Native SDK provenance", () => {
     assert.equal(parseNativeSdkVersion("native 0.5.4\n"), "0.5.4");
   });
 
-  it("fails closed for a wrong or ambiguous CLI version", () => {
-    assert.throws(() => parseNativeSdkVersion("native 0.5.3"), /Expected local Vercel Native SDK/);
+  it("parses an observed version but rejects ambiguous CLI output", () => {
+    assert.equal(parseNativeSdkVersion("native 0.5.3"), "0.5.3");
     assert.throws(() => parseNativeSdkVersion("0.5.4 (node 22.0.0)"), /exactly one/);
   });
 });
@@ -163,5 +167,101 @@ describe("runPackageLaunchSmoke", () => {
     });
     assert.equal(evidence.cleanup?.forcedTreeKillAttempted, true);
     assert.equal(evidence.cleanup?.completed, true);
+  });
+});
+
+describe("verifyWindowsPackage", () => {
+  afterEach(async () => {
+    await rm(WINDOWS_PACKAGE_DIRECTORY, { recursive: true, force: true });
+  });
+
+  async function packageWith(commandResults: readonly { readonly stdout: string; readonly stderr: string }[]): Promise<{ commands: string[][]; evidencePath: string }> {
+    const directory = await temporaryPackage();
+    const evidencePath = path.join(directory, "evidence.json");
+    const commands: string[][] = [];
+    let index = 0;
+    await verifyWindowsPackage({
+      evidencePath,
+      runCommand: async (_command, args) => {
+        commands.push([...args]);
+        const result = commandResults[index++];
+        if (args.includes("package")) await createExactExecutable(WINDOWS_PACKAGE_DIRECTORY);
+        return result;
+      },
+      launch: () => new FakeProcess(),
+      queryWindow: async () => readyWindow,
+      killProcessTree: async () => undefined,
+    });
+    return { commands, evidencePath };
+  }
+
+  it("uses the authoritative output path and command order without deleting an arbitrary sibling", async () => {
+    const unrelated = await temporaryPackage();
+    const sentinel = path.join(unrelated, "keep.txt");
+    await writeFile(sentinel, "keep");
+    const { commands } = await packageWith([{ stdout: "native 0.5.4", stderr: "" }, { stdout: "", stderr: "" }, { stdout: "", stderr: "" }]);
+    assert.equal(path.dirname(path.dirname(WINDOWS_PACKAGE_DIRECTORY)), path.join(DESKTOP_NATIVE_ROOT, "package"));
+    assert.equal(await readFile(sentinel, "utf8"), "keep");
+    assert.deepEqual(commands.map((args) => args.slice(-3)), [
+      ["--", "native", "--version"],
+      ["--", "native", "build"],
+      ["--binary", "zig-out/bin/creature-os-go-agent.exe"],
+    ]);
+    assert.match(commands[2].join(" "), /--output package\/windows/);
+  });
+
+  it("preserves detailed launch evidence instead of replacing it", async () => {
+    const directory = await temporaryPackage();
+    const evidencePath = path.join(directory, "evidence.json");
+    const detailed = {
+      expectedSdkVersion: "0.5.4",
+      observedSdkVersion: "0.5.4",
+      sdkVersionOutput: "native 0.5.4",
+      target: "windows",
+      packageDirectory: WINDOWS_PACKAGE_DIRECTORY,
+      packageCreatedAt: null,
+      runId: "detailed-launch-failure",
+      executablePath: path.join(WINDOWS_PACKAGE_DIRECTORY, "bin", "creature-os-go-agent.exe"),
+      executableSha256: "abc",
+      readiness: { ...readyWindow, ready: false },
+      readinessElapsedMs: 10,
+      cleanup: { gracefulAttempted: true, forcedTreeKillAttempted: false, completed: true, failure: null },
+      startedAt: "2026-01-01T00:00:00.000Z",
+      finishedAt: "2026-01-01T00:00:00.010Z",
+      durationMs: 10,
+      result: "failed" as const,
+      failure: "window was not ready",
+    };
+    await assert.rejects(verifyWindowsPackage({
+      evidencePath,
+      runCommand: async (_command, args) => {
+        if (args.includes("package")) await createExactExecutable(WINDOWS_PACKAGE_DIRECTORY);
+        return { stdout: args.includes("--version") ? "native 0.5.4" : "", stderr: "" };
+      },
+      runLaunchSmoke: async () => {
+        await writeFile(evidencePath, JSON.stringify(detailed));
+        throw new LaunchSmokeError(detailed);
+      },
+    }), (error: unknown) => error instanceof LaunchSmokeError && error.evidence.runId === detailed.runId);
+    assert.deepEqual(JSON.parse(await readFile(evidencePath, "utf8")), detailed);
+  });
+
+  it("records a wrong observed SDK version and raw output before launching", async () => {
+    const directory = await temporaryPackage();
+    const evidencePath = path.join(directory, "evidence.json");
+    await assert.rejects(verifyWindowsPackage({ evidencePath, runCommand: async () => ({ stdout: "native 0.5.3", stderr: "" }) }), /observed 0.5.3/);
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    assert.equal(evidence.expectedSdkVersion, "0.5.4");
+    assert.equal(evidence.observedSdkVersion, "0.5.3");
+    assert.equal(evidence.sdkVersionOutput, "native 0.5.3");
+  });
+
+  it("writes generic pre-launch evidence when the CLI cannot be observed", async () => {
+    const directory = await temporaryPackage();
+    const evidencePath = path.join(directory, "evidence.json");
+    await assert.rejects(verifyWindowsPackage({ evidencePath, runCommand: async () => { throw new Error("CLI unavailable"); } }), /CLI unavailable/);
+    const evidence = JSON.parse(await readFile(evidencePath, "utf8"));
+    assert.equal(evidence.observedSdkVersion, null);
+    assert.match(evidence.failure, /CLI unavailable/);
   });
 });

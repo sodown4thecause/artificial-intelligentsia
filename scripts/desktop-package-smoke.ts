@@ -9,6 +9,8 @@ export const WINDOWS_TARGET = "windows";
 export const WINDOWS_PACKAGE_EXECUTABLE = "creature-os-go-agent.exe";
 export const WINDOWS_PACKAGE_EXECUTABLE_RELATIVE_PATH = path.join("bin", WINDOWS_PACKAGE_EXECUTABLE);
 export const WINDOWS_PACKAGE_WINDOW_TITLE = "Creature OS - Go Agent";
+export const DESKTOP_NATIVE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "apps", "desktop-native");
+export const WINDOWS_PACKAGE_DIRECTORY = path.resolve(DESKTOP_NATIVE_ROOT, "package", WINDOWS_TARGET);
 
 export interface WindowReadiness {
   readonly ready: boolean;
@@ -26,7 +28,8 @@ export interface CleanupEvidence {
 }
 
 export interface LaunchEvidence {
-  readonly sdkVersion: string;
+  readonly expectedSdkVersion: string;
+  readonly observedSdkVersion: string | null;
   readonly sdkVersionOutput: string;
   readonly target: string;
   readonly packageDirectory: string | null;
@@ -107,9 +110,6 @@ export async function findPackagedExecutable(packageDirectory: string): Promise<
 export function parseNativeSdkVersion(output: string): string {
   const versions = [...output.matchAll(/(?:^|[^0-9])(\d+\.\d+\.\d+)(?![0-9])/g)].map((match) => match[1]);
   if (versions.length !== 1) throw new Error("Could not determine exactly one Vercel Native SDK version from the local CLI output.");
-  if (versions[0] !== NATIVE_SDK_VERSION) {
-    throw new Error(`Expected local Vercel Native SDK ${NATIVE_SDK_VERSION}; observed ${versions[0]}.`);
-  }
   return versions[0];
 }
 
@@ -218,7 +218,8 @@ async function writeEvidence(evidencePath: string, evidence: LaunchEvidence): Pr
 export async function runPackageLaunchSmoke(options: {
   readonly executablePath: string;
   readonly evidencePath: string;
-  readonly sdkVersion?: string;
+  readonly expectedSdkVersion?: string;
+  readonly observedSdkVersion?: string | null;
   readonly sdkVersionOutput?: string;
   readonly packageDirectory?: string;
   readonly packageCreatedAt?: string;
@@ -251,7 +252,8 @@ export async function runPackageLaunchSmoke(options: {
   }
   const finished = Date.now();
   const evidence: LaunchEvidence = {
-    sdkVersion: options.sdkVersion ?? NATIVE_SDK_VERSION,
+    expectedSdkVersion: options.expectedSdkVersion ?? NATIVE_SDK_VERSION,
+    observedSdkVersion: options.observedSdkVersion ?? null,
     sdkVersionOutput: options.sdkVersionOutput ?? "not observed by standalone smoke",
     target: WINDOWS_TARGET,
     packageDirectory: options.packageDirectory ? path.resolve(options.packageDirectory) : null,
@@ -280,6 +282,7 @@ export async function runPackageLaunchSmoke(options: {
 
 export interface CommandResult { readonly stdout: string; readonly stderr: string; }
 export type CommandRunner = (command: string, args: readonly string[], cwd: string) => Promise<CommandResult>;
+export type PackageLaunchSmokeRunner = typeof runPackageLaunchSmoke;
 
 function defaultCommandRunner(command: string, args: readonly string[], cwd: string): Promise<CommandResult> {
   return new Promise((resolve, reject) => {
@@ -293,37 +296,53 @@ function defaultCommandRunner(command: string, args: readonly string[], cwd: str
   });
 }
 
-/** Cleans, packages, verifies, and smoke-launches one fresh Windows package. */
+/** Cleans, packages, verifies, and smoke-launches the sole trusted Windows package output. */
 export async function verifyWindowsPackage(options: {
-  readonly packageDirectory?: string;
   readonly evidencePath?: string;
-  readonly packageRoot?: string;
   readonly runCommand?: CommandRunner;
+  readonly runLaunchSmoke?: PackageLaunchSmokeRunner;
   readonly launch?: ProcessLauncher;
   readonly queryWindow?: WindowQuery;
   readonly killProcessTree?: ProcessTreeKiller;
 } = {}): Promise<LaunchEvidence> {
-  const packageRoot = path.resolve(options.packageRoot ?? "apps/desktop-native");
-  const packageDirectory = path.resolve(options.packageDirectory ?? path.join(packageRoot, "package", WINDOWS_TARGET));
+  const packageRoot = await realpath(DESKTOP_NATIVE_ROOT);
+  const packageDirectory = path.resolve(packageRoot, "package", WINDOWS_TARGET);
+  if (!isWithin(packageRoot, packageDirectory)) {
+    throw new Error(`Trusted Windows package output escaped the desktop-native root: ${packageDirectory}`);
+  }
   const evidencePath = path.resolve(options.evidencePath ?? path.join(packageRoot, "evidence", "windows-package-verify.json"));
   const command = options.runCommand ?? defaultCommandRunner;
+  const launchSmoke = options.runLaunchSmoke ?? runPackageLaunchSmoke;
   const started = new Date().toISOString();
   let sdkOutput = "";
+  let observedSdkVersion: string | null = null;
   try {
     await rm(packageDirectory, { recursive: true, force: true });
     await mkdir(packageDirectory, { recursive: true });
+    const canonicalPackageDirectory = await realpath(packageDirectory);
+    if (canonicalPackageDirectory !== packageDirectory || !isWithin(packageRoot, canonicalPackageDirectory)) {
+      throw new Error(`Trusted Windows package output is not the expected canonical descendant: ${packageDirectory}`);
+    }
     const npmCli = process.env.npm_execpath ?? path.resolve(process.execPath, "..", "node_modules", "npm", "bin", "npm-cli.js");
     const version = await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "--version"], packageRoot);
     sdkOutput = `${version.stdout}${version.stderr}`.trim();
-    const sdkVersion = parseNativeSdkVersion(sdkOutput);
+    try {
+      observedSdkVersion = parseNativeSdkVersion(sdkOutput);
+    } catch {
+      throw new Error(`Could not determine exactly one Vercel Native SDK version from the local CLI output.`);
+    }
+    if (observedSdkVersion !== NATIVE_SDK_VERSION) {
+      throw new Error(`Expected local Vercel Native SDK ${NATIVE_SDK_VERSION}; observed ${observedSdkVersion}.`);
+    }
     await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "build"], packageRoot);
     await command(process.execPath, [npmCli, "exec", "--no", "--", "native", "package", "--target", WINDOWS_TARGET, "--output", "package/windows", "--binary", "zig-out/bin/creature-os-go-agent.exe"], packageRoot);
     const executablePath = await findPackagedExecutable(packageDirectory);
     const executableStats = await stat(executablePath);
-    return await runPackageLaunchSmoke({
+    return await launchSmoke({
       executablePath,
       evidencePath,
-      sdkVersion,
+      expectedSdkVersion: NATIVE_SDK_VERSION,
+      observedSdkVersion,
       sdkVersionOutput: sdkOutput,
       packageDirectory,
       packageCreatedAt: executableStats.birthtime.toISOString(),
@@ -333,9 +352,11 @@ export async function verifyWindowsPackage(options: {
       killProcessTree: options.killProcessTree,
     });
   } catch (error) {
+    if (error instanceof LaunchSmokeError) throw error;
     const finished = new Date().toISOString();
     const evidence: LaunchEvidence = {
-      sdkVersion: NATIVE_SDK_VERSION,
+      expectedSdkVersion: NATIVE_SDK_VERSION,
+      observedSdkVersion,
       sdkVersionOutput: sdkOutput || "local Native CLI version was not observed",
       target: WINDOWS_TARGET,
       packageDirectory,

@@ -8,7 +8,7 @@
 
 The isolated `apps/desktop-native/` shell uses the official Vercel Native SDK CLI pinned to `@native-sdk/cli` **0.5.4**. It is a TypeScript model/update core plus `.native` markup, with the SDK's D8 adapter/build boundary; it does not embed the existing Node/React application. Native SDK v0.5.4 requires its `gpu_surface` canvas renderer for this markup; that renderer is not a WebView and the shell declares no web, network, filesystem, shell, or credentials permission. Its Windows directory package and launch smoke are one local incremental package/launch result only. They do **not** close Gate 1 and do not establish an installer, signing, OS-keyring handling, macOS/Linux packaging, or live Go Agent integration.
 
-Local Windows-only evidence on 2026-07-23: `native check`, `native build`, and `native package --target windows` passed with Zig 0.16.0; the produced directory package contained `package/windows/bin/creature-os-go-agent.exe`. The launch smoke held that executable alive for 2,322 ms, terminated it, and recorded ignored local JSON evidence. This is not installer, signing, keyring, live-service, human-observation, or sign-off evidence.
+Local Windows-only evidence on 2026-07-23: `native check`, `native build`, and `native package --target windows` produced a fresh `apps/desktop-native/package/windows/bin/creature-os-go-agent.exe` with its exact SHA-256 recorded. The local CLI version was observed as 0.5.4; the smoke requires a responsive top-level window titled exactly `Creature OS - Go Agent` and bounded process-tree cleanup, then records ignored local JSON evidence. This is not installed-app, human-interaction, installer, signing, keyring, live-service, macOS/Linux, or sign-off evidence.
 
 ## Scope and evidence rules
 
