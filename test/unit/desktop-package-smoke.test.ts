@@ -200,12 +200,12 @@ describe("verifyWindowsPackage", () => {
     const sentinel = path.join(unrelated, "keep.txt");
     await writeFile(sentinel, "keep");
     const { commands } = await packageWith([{ stdout: "native 0.5.4", stderr: "" }, { stdout: "", stderr: "" }, { stdout: "", stderr: "" }]);
-    assert.equal(path.dirname(path.dirname(WINDOWS_PACKAGE_DIRECTORY)), path.join(DESKTOP_NATIVE_ROOT, "package"));
+    assert.equal(path.dirname(WINDOWS_PACKAGE_DIRECTORY), path.join(DESKTOP_NATIVE_ROOT, "package"));
     assert.equal(await readFile(sentinel, "utf8"), "keep");
     assert.deepEqual(commands.map((args) => args.slice(-3)), [
       ["--", "native", "--version"],
       ["--", "native", "build"],
-      ["--binary", "zig-out/bin/creature-os-go-agent.exe"],
+      ["package/windows", "--binary", "zig-out/bin/creature-os-go-agent.exe"],
     ]);
     assert.match(commands[2].join(" "), /--output package\/windows/);
   });
