@@ -249,6 +249,7 @@ jobs:
                        & taskkill.exe /PID $process.Id /T /F | Out-Null
                        throw "Timed out after $TimeoutSeconds seconds: $FilePath $($ArgumentList -join ' ')"
                      }
+                     $process.Refresh()
                      if ($process.ExitCode -ne 0) { throw "Command failed with exit code $($process.ExitCode): $FilePath $($ArgumentList -join ' ')" }
                    }
 
