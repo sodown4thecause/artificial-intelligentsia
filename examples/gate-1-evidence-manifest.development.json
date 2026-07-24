@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "gate": "gate-1",
+  "generatedAt": "2026-07-24T00:00:00.000Z",
+  "subject": { "kind": "development", "commit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "signedArtifacts": [] },
+  "evidence": [
+    {
+      "id": "windows-directory-package", "type": "desktop-directory-package", "provenance": "deterministic-local", "result": "passed", "recordedAt": "2026-07-24T00:00:00.000Z",
+      "environment": { "operatingSystem": "windows", "architecture": "x86_64", "runner": "local" }, "subjectCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "sources": ["scripts/desktop-package-smoke.ts"], "packageSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "artifacts": [
+        { "reference": "artifacts/windows/desktop/app.zip", "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "role": "package", "mediaType": "application/zip", "purpose": "directory package archive" },
+        { "reference": "artifacts/windows/desktop/evidence.json", "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "role": "evidence", "mediaType": "application/json", "purpose": "package validation evidence" }
+      ], "limitations": ["Directory package is not an installer."],
+      "privacy": { "classification": "internal", "syntheticData": true, "redactionStatus": "not-required", "accessScope": "maintainers" }
+    }
+  ]
+}
