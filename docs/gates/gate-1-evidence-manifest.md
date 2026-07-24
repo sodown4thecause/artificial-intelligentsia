@@ -2,6 +2,14 @@
 
 The Gate 1 evidence manifest is a strict, versioned index of evidence for one Git commit. It is deliberately separate from the existing `native-build-evidence` and `desktop-package-smoke` payloads: those artifacts remain unchanged and are referenced by manifest entries.
 
+Every artifact declares a role: `package`, `evidence`, `log`, `trace`, `signature`, or `report`. A `desktop-directory-package` or `installer` entry must contain exactly one actual `package` artifact, and that entry's `packageSha256` must equal that artifact's digest. An evidence JSON payload is therefore never a package by implication.
+
+`packageSha256` is an immutable package-identity reference, not an artifact declaration. Installer validation, signing, installed-launch, and keyring records may each reference the same package digest without repeating its package artifact. Artifact references and payload digests remain globally unique; package identity references may repeat. Frozen candidates must list signatures for every declared artifact and every referenced package digest.
+
+Results are exclusive: `passed` has no failure, `failed` has a nonempty failure, and `blocked` has no failure plus at least one limitation. Blocked evidence may have no artifacts while collection is pending.
+
+Human observations and sign-offs require human provenance, non-synthetic redacted data, a safe consent reference, and a strict opaque-actor attestation with role, timestamp, context, and an `observed` (observation) or `approved`/`rejected` (sign-off) decision. Live-provider evidence likewise requires live-provider provenance and redaction, with either synthetic data or documented consent.
+
 ## Version 1
 
 A manifest has `schemaVersion: 1`, `gate: "gate-1"`, a generation timestamp, and a subject. A development subject has a commit and no frozen-candidate signatures. A `frozen-release-candidate` has the same exact lowercase 40-character commit SHA plus signed artifact digests; every referenced artifact must match one of those signed digests.
