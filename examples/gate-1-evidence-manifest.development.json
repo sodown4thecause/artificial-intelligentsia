@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "gate": "gate-1",
+  "generatedAt": "2026-07-24T00:00:00.000Z",
+  "subject": {
+    "kind": "development",
+    "commit": "19bd2ca40e53fb226db0638b9e88703c439234b1",
+    "signedArtifacts": []
+  },
+  "evidence": [
+    {
+      "id": "windows-native-library-ci",
+      "type": "native-library",
+      "provenance": "ci",
+      "result": "passed",
+      "recordedAt": "2026-07-24T00:00:00.000Z",
+      "environment": { "operatingSystem": "windows", "architecture": "x86_64", "runner": "circleci-windows" },
+      "subjectCommit": "19bd2ca40e53fb226db0638b9e88703c439234b1",
+      "sources": [".circleci/config.yml", "scripts/native-build-evidence.ts"],
+      "artifacts": [
+        {
+          "reference": "artifacts/windows/native/native-evidence-windows.json",
+          "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "mediaType": "application/json",
+          "purpose": "native library build evidence"
+        }
+      ],
+      "limitations": ["Example metadata only; it is not a captured CI artifact."],
+      "privacy": { "classification": "internal", "syntheticData": true, "redactionStatus": "not-required", "accessScope": "repository maintainers" }
+    },
+    {
+      "id": "windows-directory-package-local",
+      "type": "desktop-directory-package",
+      "provenance": "deterministic-local",
+      "result": "passed",
+      "recordedAt": "2026-07-24T00:00:00.000Z",
+      "environment": { "operatingSystem": "windows", "architecture": "x86_64", "runner": "local-development" },
+      "subjectCommit": "19bd2ca40e53fb226db0638b9e88703c439234b1",
+      "sources": ["scripts/desktop-package-smoke.ts", ".circleci/config.yml"],
+      "artifacts": [
+        {
+          "reference": "artifacts/windows/desktop-native-verification-evidence/windows-package-verify.json",
+          "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "mediaType": "application/json",
+          "purpose": "Windows directory package launch smoke",
+          "packageSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        }
+      ],
+      "limitations": ["Directory package evidence is not installer or signing evidence."],
+      "privacy": { "classification": "internal", "syntheticData": true, "redactionStatus": "not-required", "accessScope": "repository maintainers" }
+    }
+  ]
+}

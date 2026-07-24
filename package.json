@@ -22,6 +22,7 @@
     "desktop:build": "native build apps/desktop-native",
     "desktop:package:windows": "cd apps/desktop-native && native package --target windows --output package/windows",
     "desktop:smoke:windows": "tsx scripts/desktop-package-smoke.ts",
+    "validate:gate-1-manifest": "tsx scripts/validate-gate-1-manifest.ts",
     "lint": "echo 'lint placeholder'"
   },
   "dependencies": {

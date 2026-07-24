@@ -4,6 +4,8 @@
 **Review date:** 2026-07-22
 **Gate status: BLOCKED.** Gate 1 is **OPEN** in the decision tracker until its blockers are resolved and named humans sign the record.
 
+Evidence is indexed with the [versioned Gate 1 evidence manifest](gate-1-evidence-manifest.md). This schema does not change this record's blocked status or convert deterministic artifacts into provider, installer, or human evidence.
+
 ## Native shell increment — 2026-07-23
 
 The isolated `apps/desktop-native/` shell uses the official Vercel Native SDK CLI pinned to `@native-sdk/cli` **0.5.4**. It is a TypeScript model/update core plus `.native` markup, with the SDK's D8 adapter/build boundary; it does not embed the existing Node/React application. Native SDK v0.5.4 requires its `gpu_surface` canvas renderer for this markup; that renderer is not a WebView and the shell declares no web, network, filesystem, shell, or credentials permission. Its Windows directory package and launch smoke are one local incremental package/launch result only. They do **not** close Gate 1 and do not establish an installer, signing, OS-keyring handling, macOS/Linux packaging, or live Go Agent integration.
