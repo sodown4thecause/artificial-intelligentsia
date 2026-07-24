@@ -27,3 +27,6 @@ npm run validate:gate-1-manifest -- examples/gate-1-evidence-manifest.developmen
 ```
 
 The committed example is non-secret, illustrative development metadata. It references the current native-library and Windows directory-package artifact categories; it is not generated evidence or a release candidate.
+## Evidence governance
+
+Schema version 1 manifests are additionally governed by the typed, fail-closed [Gate 1 evidence governance policy](gate-1-evidence-governance.md). It controls classification, access, artifact storage, redaction, retention, ownership, and lifecycle; its engineering-default status is reviewed by Security and the Release Owner in plan task 3.4.

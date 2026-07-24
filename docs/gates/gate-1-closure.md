@@ -82,3 +82,6 @@ This assessment evaluates the 13 private-beta conditions in [PRD §17](../../prd
 The Windows evidence is a **local directory package** and an automated packaged-window readiness smoke only. A PASS proves that a freshly generated `bin/creature-os-go-agent.exe` opened a responsive `Creature OS - Go Agent` top-level window; it is not human interactive UI validation or an installed-application launch.
 
 This does not close Gate 1 or the Windows installer criterion. An installer, installation evidence, signing, production keyring validation, and human interactive launch validation remain outstanding.
+## Evidence governance prerequisite
+
+Evidence used for closure must pass the [Gate 1 evidence governance policy](gate-1-evidence-governance.md). Quarantined, deleted, blocked, or expired active evidence cannot support a passed Gate 1 conclusion. This is an engineering-default control pending Security and Release Owner review in plan task 3.4.

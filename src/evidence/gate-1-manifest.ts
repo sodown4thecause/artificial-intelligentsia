@@ -1,4 +1,15 @@
 import { z } from "zod";
+import {
+  gate1AccessScopes,
+  gate1EvidenceTypes,
+  gate1LifecycleStates,
+  gate1OwnerRoles,
+  gate1RedactionProfiles,
+  gate1RetentionPolicies,
+  gate1StorageLocations,
+  type Gate1EvidenceType,
+  validateGate1EvidenceGovernance,
+} from "./gate-1-governance.js";
 
 const commitSchema = z.string().regex(/^[a-f0-9]{40}$/, "Expected a lowercase 40-character Git commit SHA.");
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/, "Expected a lowercase SHA-256 digest.");
@@ -26,6 +37,7 @@ const artifactSchema = z.object({
   reference: gate1SourceReferenceSchema,
   sha256: sha256Schema,
   role: artifactRoleSchema,
+  storage: z.enum(gate1StorageLocations),
   mediaType: z.string().min(1),
   purpose: z.string().min(1),
 }).strict();
@@ -34,9 +46,22 @@ const privacySchema = z.object({
   classification: z.enum(["public", "internal", "confidential", "restricted"]),
   syntheticData: z.boolean(),
   redactionStatus: z.enum(["redacted", "not-required"]),
-  accessScope: z.string().min(1),
+  redactionProfile: z.enum(gate1RedactionProfiles),
+  accessScope: z.enum(gate1AccessScopes),
   consentReference: gate1SourceReferenceSchema.optional(),
   retentionReference: gate1SourceReferenceSchema.optional(),
+  retentionPolicy: z.enum(gate1RetentionPolicies),
+  retentionUntil: timestampSchema.optional(),
+  legalHold: z.boolean(),
+  governanceOwnerRole: z.enum(gate1OwnerRoles),
+}).strict();
+
+const lifecycleSchema = z.object({
+  state: z.enum(gate1LifecycleStates),
+  incidentReference: gate1SourceReferenceSchema.optional(),
+  quarantinedAt: timestampSchema.optional(),
+  deletedAt: timestampSchema.optional(),
+  deletionReceiptReference: gate1SourceReferenceSchema.optional(),
 }).strict();
 
 const signedArtifactSchema = z.object({
@@ -57,9 +82,7 @@ const subjectSchema = z.object({
   }
 });
 
-export const gate1EvidenceTypeSchema = z.enum([
-  "native-library", "desktop-directory-package", "installer", "credential-round-trip", "signing-notarization", "cold-start", "durable-resume", "language-quality", "product-journey", "eve", "ai-sdk-7", "vercel-connect", "gmail", "calendar", "human-observation", "rollback", "sign-off",
-]);
+export const gate1EvidenceTypeSchema = z.enum(gate1EvidenceTypes);
 
 const humanAttestationSchema = z.object({
   actorReference: z.string().regex(/^[a-z0-9][a-z0-9._:-]{2,127}$/i, "Expected an opaque actor reference."),
@@ -83,6 +106,7 @@ const evidenceBase = {
   packageSha256: sha256Schema.optional(),
   limitations: z.array(z.string().min(1)),
   privacy: privacySchema,
+  lifecycle: lifecycleSchema,
   humanAttestation: humanAttestationSchema.optional(),
 };
 
@@ -152,13 +176,17 @@ export const gate1EvidenceManifestSchema = z.object({
     if (entry.packageSha256 !== undefined && !packageDigests.has(entry.packageSha256)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "packageSha256"], message: "Package digest must identify an actual package artifact in the manifest." });
     if (manifest.subject.kind === "frozen-release-candidate" && entry.packageSha256 !== undefined && !signedDigests.has(entry.packageSha256)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "packageSha256"], message: "Frozen-candidate package digests require a matching signed digest." });
   }
+
+  for (const violation of validateGate1EvidenceGovernance(manifest.evidence)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", violation.entryIndex, ...violation.path], message: violation.message });
+  }
 });
 
 export type Gate1EvidenceManifestInput = z.input<typeof gate1EvidenceManifestSchema>;
 type DeepReadonly<T> = T extends (...arguments_: never[]) => unknown ? T : T extends readonly (infer Item)[] ? readonly DeepReadonly<Item>[] : T extends object ? { readonly [Key in keyof T]: DeepReadonly<T[Key]> } : T;
 export type Gate1EvidenceManifest = DeepReadonly<z.output<typeof gate1EvidenceManifestSchema>>;
 export type Gate1EvidenceEntry = Gate1EvidenceManifest["evidence"][number];
-export type Gate1EvidenceType = z.infer<typeof gate1EvidenceTypeSchema>;
+export type { Gate1EvidenceType };
 
 function deepFreeze<T>(value: T): DeepReadonly<T> {
   if (value !== null && typeof value === "object" && !Object.isFrozen(value)) {
