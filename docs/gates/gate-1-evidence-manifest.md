@@ -2,13 +2,13 @@
 
 The Gate 1 evidence manifest is a strict, versioned index of evidence for one Git commit. It is deliberately separate from the existing `native-build-evidence` and `desktop-package-smoke` payloads: those artifacts remain unchanged and are referenced by manifest entries.
 
-Every artifact declares a role: `package`, `evidence`, `log`, `trace`, `signature`, or `report`. A `desktop-directory-package` or `installer` entry must contain exactly one actual `package` artifact, and that entry's `packageSha256` must equal that artifact's digest. An evidence JSON payload is therefore never a package by implication.
+Every artifact declares a role: `package`, `evidence`, `log`, `trace`, `signature`, or `report`. A non-blocked `desktop-directory-package` or `installer` entry must contain exactly one actual `package` artifact, and that entry's `packageSha256` must equal that artifact's digest. An evidence JSON payload is therefore never a package by implication.
 
-`packageSha256` is an immutable package-identity reference, not an artifact declaration. Installer validation, signing, installed-launch, and keyring records may each reference the same package digest without repeating its package artifact. Artifact references and payload digests remain globally unique; package identity references may repeat. Frozen candidates must list signatures for every declared artifact and every referenced package digest.
+`packageSha256` is an immutable package-identity reference, not an artifact declaration. Installer validation, signing, installed-launch, and keyring records may each reference the same package digest without repeating its package artifact. Every passed or failed signing/notarization record must bind `packageSha256` to a declared `package` artifact digest. Artifact references and payload digests remain globally unique; package identity references may repeat. Frozen candidates must list signatures for every declared artifact and every referenced package digest.
 
-Results are exclusive: `passed` has no failure, `failed` has a nonempty failure, and `blocked` has no failure plus at least one limitation. Blocked evidence may have no artifacts while collection is pending.
+Results are exclusive: `passed` has no failure, `failed` has a nonempty failure, and `blocked` has no failure plus at least one limitation. Blocked entries are inventory/placeholders for pending work, not completed evidence: they may be artifact-free and do not need category completion fields such as a package digest, live-provider provenance, consent, or an attestation. Their provenance and privacy fields describe the manifest record itself, and Gate closure ignores them as evidence.
 
-Human observations and sign-offs require human provenance, non-synthetic redacted data, a safe consent reference, and a strict opaque-actor attestation with role, timestamp, context, and an `observed` (observation) or `approved`/`rejected` (sign-off) decision. Live-provider evidence likewise requires live-provider provenance and redaction, with either synthetic data or documented consent.
+Non-blocked human observations and sign-offs require human provenance, non-synthetic redacted data, a safe consent reference, and a strict opaque-actor attestation with role, timestamp, context, and an `observed` (observation) or `approved`/`rejected` (sign-off) decision. Non-blocked live-provider evidence likewise requires live-provider provenance and redaction, with either synthetic data or documented consent.
 
 ## Version 1
 

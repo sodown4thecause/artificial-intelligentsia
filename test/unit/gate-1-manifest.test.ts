@@ -42,6 +42,15 @@ test("accepts a shared immutable package identity across installer and signing r
   assert.equal(parseGate1EvidenceManifest(manifest).subject.kind, "frozen-release-candidate");
 });
 
+test("requires passed and failed signing evidence to identify a declared package", () => {
+  for (const result of ["passed", "failed"] as const) {
+    const manifest = validDevelopmentManifest();
+    const signingBase = { id: `package-signing-${result}`, type: "signing-notarization" as const, provenance: "ci" as const, recordedAt: "2026-07-24T00:00:00.000Z", environment: { operatingSystem: "windows", architecture: "x86_64", runner: "circleci" }, subjectCommit: COMMIT, sources: ["reports/signing.json"], artifacts: [{ reference: `reports/signature-${result}.json`, sha256: SIGNATURE_DIGEST, role: "signature" as const, mediaType: "application/json", purpose: "signing validation" }], limitations: [], privacy: { classification: "internal" as const, syntheticData: true, redactionStatus: "not-required" as const, accessScope: "maintainers" } };
+    manifest.evidence.push(result === "failed" ? { ...signingBase, result: "failed", failure: "notarization failed" } : { ...signingBase, result: "passed" });
+    expectRejected(manifest);
+  }
+});
+
 test("enforces subject, package, artifact, and nested strictness invariants", () => {
   const duplicateSigned = validDevelopmentManifest(); duplicateSigned.subject.kind = "frozen-release-candidate"; duplicateSigned.subject.signedArtifacts = [{ sha256: NATIVE_DIGEST, signatureReference: "https://example.test/native.sig" }, { sha256: NATIVE_DIGEST, signatureReference: "https://example.test/native-duplicate.sig" }]; expectRejected(duplicateSigned);
   const developmentSigned = validDevelopmentManifest(); developmentSigned.subject.signedArtifacts = [{ sha256: NATIVE_DIGEST, signatureReference: "https://example.test/native.sig" }]; expectRejected(developmentSigned);
@@ -56,6 +65,19 @@ test("result variants fail closed and allow pending blocked evidence", () => {
   const failedMissingFailure = validDevelopmentManifest(); (failedMissingFailure.evidence[0] as { result: "passed" | "failed" }).result = "failed"; expectRejected(failedMissingFailure);
   const blockedFailure = validDevelopmentManifest(); Object.assign(blockedFailure.evidence[0], { result: "blocked", artifacts: [], limitations: ["pending"], failure: "unexpected" }); expectRejected(blockedFailure);
   const blockedPending = validDevelopmentManifest(); Object.assign(blockedPending.evidence[0], { result: "blocked", artifacts: [], limitations: ["provider evidence pending"] }); assert.equal(parseGate1EvidenceManifest(blockedPending).evidence[0].artifacts.length, 0);
+});
+
+test("accepts artifact-free blocked inventory but rejects its incomplete completion claims", () => {
+  const pendingTypes = ["installer", "eve", "human-observation", "sign-off"] as const;
+  for (const type of pendingTypes) {
+    const blocked = validDevelopmentManifest();
+    Object.assign(blocked.evidence[0], { id: `pending-${type}`, type, provenance: "deterministic-local", result: "blocked", artifacts: [], limitations: [`${type} pending`], privacy: { classification: "internal", syntheticData: true, redactionStatus: "not-required", accessScope: "maintainers" } });
+    assert.equal(parseGate1EvidenceManifest(blocked).evidence[0].result, "blocked");
+
+    const passed = structuredClone(blocked);
+    Object.assign(passed.evidence[0], { result: "passed", artifacts: [{ reference: `artifacts/${type}/evidence.json`, sha256: NATIVE_DIGEST, role: "evidence", mediaType: "application/json", purpose: "incomplete completion claim" }] });
+    expectRejected(passed);
+  }
 });
 
 test("enforces provider and human provenance, consent, and attestation", () => {

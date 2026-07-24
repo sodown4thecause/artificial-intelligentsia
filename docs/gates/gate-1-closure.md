@@ -4,7 +4,7 @@
 **Review date:** 2026-07-22
 **Gate status: BLOCKED.** Gate 1 is **OPEN** in the decision tracker until its blockers are resolved and named humans sign the record.
 
-Evidence is indexed with the [versioned Gate 1 evidence manifest](gate-1-evidence-manifest.md). This schema does not change this record's blocked status or convert deterministic artifacts into provider, installer, or human evidence.
+Evidence is indexed with the [versioned Gate 1 evidence manifest](gate-1-evidence-manifest.md). This schema does not change this record's blocked status or convert deterministic artifacts into provider, installer, or human evidence. Manifest entries with `result: blocked` are pending inventory, not Gate-closing evidence, even though their provenance and privacy fields describe the recorded inventory item.
 
 ## Native shell increment — 2026-07-23
 

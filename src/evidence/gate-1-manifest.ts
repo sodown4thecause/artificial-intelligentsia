@@ -118,22 +118,25 @@ export const gate1EvidenceManifestSchema = z.object({
     ids.add(entry.id);
     if (entry.subjectCommit !== manifest.subject.commit) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "subjectCommit"], message: "Evidence must use the manifest subject commit." });
 
-    const isProvider = providerEvidenceTypes.has(entry.type);
-    const isHuman = humanEvidenceTypes.has(entry.type);
-    if (isProvider && entry.provenance !== "live-provider") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Provider evidence requires live-provider provenance." });
-    if (isHuman && entry.provenance !== "human") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Human evidence requires human provenance." });
-    if (!isProvider && !isHuman && (entry.provenance === "live-provider" || entry.provenance === "human")) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Only provider and human evidence may claim elevated provenance." });
-    if (isProvider && (entry.privacy.redactionStatus !== "redacted" || (!entry.privacy.syntheticData && entry.privacy.consentReference === undefined))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "privacy"], message: "Provider evidence must be redacted and use synthetic data or document consent." });
-    if (isHuman) {
-      if (entry.privacy.syntheticData || entry.privacy.redactionStatus !== "redacted" || entry.privacy.consentReference === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "privacy"], message: "Human evidence must be non-synthetic, redacted, and document consent." });
-      if (entry.humanAttestation === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation"], message: "Human evidence requires an attestation." });
-      if (entry.type === "human-observation" && entry.humanAttestation?.decision !== "observed") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation", "decision"], message: "Human observations require an observed decision." });
-      if (entry.type === "sign-off" && entry.humanAttestation !== undefined && entry.humanAttestation.decision === "observed") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation", "decision"], message: "Sign-offs require an approved or rejected decision." });
-    }
+    if (entry.result !== "blocked") {
+      const isProvider = providerEvidenceTypes.has(entry.type);
+      const isHuman = humanEvidenceTypes.has(entry.type);
+      if (isProvider && entry.provenance !== "live-provider") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Provider evidence requires live-provider provenance." });
+      if (isHuman && entry.provenance !== "human") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Human evidence requires human provenance." });
+      if (!isProvider && !isHuman && (entry.provenance === "live-provider" || entry.provenance === "human")) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "provenance"], message: "Only provider and human evidence may claim elevated provenance." });
+      if (isProvider && (entry.privacy.redactionStatus !== "redacted" || (!entry.privacy.syntheticData && entry.privacy.consentReference === undefined))) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "privacy"], message: "Provider evidence must be redacted and use synthetic data or document consent." });
+      if (isHuman) {
+        if (entry.privacy.syntheticData || entry.privacy.redactionStatus !== "redacted" || entry.privacy.consentReference === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "privacy"], message: "Human evidence must be non-synthetic, redacted, and document consent." });
+        if (entry.humanAttestation === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation"], message: "Human evidence requires an attestation." });
+        if (entry.type === "human-observation" && entry.humanAttestation?.decision !== "observed") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation", "decision"], message: "Human observations require an observed decision." });
+        if (entry.type === "sign-off" && entry.humanAttestation !== undefined && entry.humanAttestation.decision === "observed") context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "humanAttestation", "decision"], message: "Sign-offs require an approved or rejected decision." });
+      }
 
-    const packageArtifacts = entry.artifacts.filter((artifact) => artifact.role === "package");
-    if (packageEvidenceTypes.has(entry.type) && (packageArtifacts.length !== 1 || entry.packageSha256 !== packageArtifacts[0]?.sha256)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "packageSha256"], message: "Package entries require exactly one package artifact and a matching package digest binding." });
-    if (!packageEvidenceTypes.has(entry.type) && packageArtifacts.length > 0) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "artifacts"], message: "Only package entries may declare package artifacts." });
+      const packageArtifacts = entry.artifacts.filter((artifact) => artifact.role === "package");
+      if (packageEvidenceTypes.has(entry.type) && (packageArtifacts.length !== 1 || entry.packageSha256 !== packageArtifacts[0]?.sha256)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "packageSha256"], message: "Package entries require exactly one package artifact and a matching package digest binding." });
+      if (!packageEvidenceTypes.has(entry.type) && packageArtifacts.length > 0) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "artifacts"], message: "Only package entries may declare package artifacts." });
+      if (entry.type === "signing-notarization" && entry.packageSha256 === undefined) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "packageSha256"], message: "Signing and notarization evidence requires a package digest binding." });
+    }
 
     for (const [artifactIndex, artifact] of entry.artifacts.entries()) {
       if (artifactReferences.has(artifact.reference)) context.addIssue({ code: z.ZodIssueCode.custom, path: ["evidence", entryIndex, "artifacts", artifactIndex, "reference"], message: "Artifact references must be unique across the manifest." });
