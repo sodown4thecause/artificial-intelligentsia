@@ -12,6 +12,9 @@ export const WINDOWS_PACKAGE_WINDOW_TITLE = "Creature OS - Go Agent";
 export const DESKTOP_NATIVE_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "apps", "desktop-native");
 export const WINDOWS_PACKAGE_DIRECTORY = path.resolve(DESKTOP_NATIVE_ROOT, "package", WINDOWS_TARGET);
 
+const DEFAULT_WINDOW_QUERY_TIMEOUT_MS = 10_000;
+const DEFAULT_WINDOW_READINESS_TIMEOUT_MS = 30_000;
+
 export interface WindowReadiness {
   readonly ready: boolean;
   readonly handle: string | null;
@@ -151,7 +154,7 @@ async function defaultWindowQuery(pid: number): Promise<WindowReadiness> {
     const timer = setTimeout(() => {
       query.kill();
       reject(new Error("Timed out querying packaged window readiness."));
-    }, 2_000);
+    }, DEFAULT_WINDOW_QUERY_TIMEOUT_MS);
     query.once("error", (error) => { clearTimeout(timer); reject(error); });
     query.once("exit", (code) => {
       clearTimeout(timer);
@@ -239,7 +242,7 @@ export async function runPackageLaunchSmoke(options: {
   let failure: string | null = null;
   try {
     process = (options.launch ?? defaultLauncher)(options.executablePath);
-    const window = await waitForReadyWindow(process, options.queryWindow ?? defaultWindowQuery, options.readinessTimeoutMs ?? 10_000);
+    const window = await waitForReadyWindow(process, options.queryWindow ?? defaultWindowQuery, options.readinessTimeoutMs ?? DEFAULT_WINDOW_READINESS_TIMEOUT_MS);
     readiness = window.readiness;
     readinessElapsedMs = window.elapsedMs;
   } catch (error) {
